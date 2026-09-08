@@ -418,7 +418,7 @@ function buildTable(store, stats, projTx, prevSoh, prevOvr) {
       '</td>' +
       /* Final */
       '<td class="px-3 py-2.5 text-center final-cell" style="background:#FFF8EE;">' +
-        renderFinal(finalPacks) +
+        renderFinal(finalPacks, hasOv) +
       '</td>';
 
     tbody.appendChild(tr);
@@ -445,7 +445,7 @@ function onCellChange(input) {
   tr.querySelector('.net-need-cell').innerHTML  = renderNeed(rawNeed);
   tr.querySelector('.moq-packs-cell').innerHTML =
     moqPacks > 0 ? '<span style="color:#4A2C1A;">' + moqPacks + '</span>' : '<span class="text-gray-300">—</span>';
-  tr.querySelector('.final-cell').innerHTML = renderFinal(finalPacks);
+  tr.querySelector('.final-cell').innerHTML = renderFinal(finalPacks, hasOv);
 
   updateTotals();
 }
@@ -782,8 +782,13 @@ function renderNeed(v) {
   if (v <= 0) return '<span class="text-gray-300">0</span>';
   return '<span class="font-semibold" style="color:#D97706;">' + Math.ceil(v) + '</span>';
 }
-function renderFinal(v) {
-  if (v <= 0) return '<span class="final-zero">—</span>';
+function renderFinal(v, hasOverride) {
+  if (v === null || v === undefined) return '<span class="final-zero">—</span>';
+  if (v === 0) {
+    return hasOverride 
+      ? '<span class="final-big" style="color:#EF4444;">0</span>' 
+      : '<span class="final-zero">0</span>';
+  }
   return '<span class="final-big">' + v + '</span>';
 }
 function collectVals(sel) {
