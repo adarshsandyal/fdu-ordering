@@ -1,6 +1,6 @@
 # TWC FDU Order Calculator
 
-A browser-based tool for **The Whole Cake** store managers to predict and plan **Fresh Daily Unit (FDU)** orders.
+A browser-based tool for **The Whole Cake** store managers to predict and plan **Food Display Unit (FDU)** orders.
 
 ## 🔗 Live Site
 **[Open the Order Calculator →](https://adarshsandyal.github.io/fdu-ordering/)**
