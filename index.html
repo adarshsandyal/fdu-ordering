@@ -490,7 +490,7 @@ function updateTotals() {
 
   setText('footProjUnits', tProj.toFixed(1));
   setText('footSoh',       tSoh.toFixed(0));
-  setText('footNetNeed',   tNeed.toFixed(1));
+  setText('footNetNeed',   Math.ceil(tNeed));
   setText('footMoqPacks',  tPacks);
   setText('footFinal',     tFinal);
   document.getElementById('totalUnits').textContent     = tFinal;
@@ -544,7 +544,7 @@ function exportCSV() {
       info.moq,
       ipt > 0 ? ipt.toFixed(4) : '',
       projU.toFixed(2), soh,
-      rawNeed.toFixed(1), moqPacks,
+      Math.ceil(rawNeed), moqPacks,
       ovStr, finalPacks
     ].join(',') + '\n';
   });
@@ -780,7 +780,7 @@ function jsDateStr(val) {
 ───────────────────────────────────────────────── */
 function renderNeed(v) {
   if (v <= 0) return '<span class="text-gray-300">0</span>';
-  return '<span class="font-semibold" style="color:#D97706;">' + v.toFixed(1) + '</span>';
+  return '<span class="font-semibold" style="color:#D97706;">' + Math.ceil(v) + '</span>';
 }
 function renderFinal(v) {
   if (v <= 0) return '<span class="final-zero">—</span>';
