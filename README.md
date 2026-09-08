@@ -36,11 +36,10 @@ Final Order             = Manager Override (if set) else Order (Packs)
 
 ## Updating data each month
 
-When you update the Excel file with new sales/transaction data:
+When you update `FDU ORDERING .xlsx` with new sales and transaction data:
 
-1. Open the site in your browser
-2. **Drag & drop the updated `FDU ORDERING .xlsx`** onto the upload bar at the top
-3. The site re-processes everything instantly — no server, no code needed
+1. In the `FDU_ORDERING` directory, double-click `update_and_push.bat` (or run `python generate_data_js.py && git add data.js && git commit -m "Update data" && git push`).
+2. The GitHub Pages site updates automatically within 60 seconds for all users!
 
 ---
 

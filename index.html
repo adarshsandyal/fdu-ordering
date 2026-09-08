@@ -7,8 +7,6 @@
   <link rel="icon" type="image/png" href="logo.png" />
   <link rel="apple-touch-icon" href="logo.png" />
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- SheetJS for in-browser Excel parsing -->
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
   <script>
     tailwind.config = {
       theme: {
@@ -52,22 +50,6 @@
     thead th { position: sticky; top: 0; z-index: 10; }
     tbody tr:hover { background: #FDF6EE !important; }
 
-    /* Upload zone */
-    .upload-zone {
-      border: 2px dashed #C8913A; border-radius: 14px;
-      background: #FFFBF3; cursor: pointer;
-      transition: background 0.2s, border-color 0.2s;
-    }
-    .upload-zone:hover, .upload-zone.drag-over {
-      background: #FFF3DC; border-color: #7A4F35;
-    }
-    .upload-zone.success { border-color: #16A34A; background: #F0FDF4; }
-    .upload-zone.error   { border-color: #DC2626; background: #FEF2F2; }
-
-    /* Spinner */
-    .spin { animation: spin 0.8s linear infinite; display: inline-block; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
     @media print {
       .no-print { display: none !important; }
       header, .stat-card { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -104,33 +86,8 @@
   </div>
 </header>
 
-<!-- ══════════════════════  UPLOAD PANEL  ══════════════════════ -->
-<div class="max-w-screen-xl mx-auto px-6 pt-5 no-print">
-  <div class="upload-zone p-5" id="uploadZone"
-       ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)"
-       onclick="document.getElementById('fileInput').click()">
-    <input type="file" id="fileInput" accept=".xlsx,.xls" class="hidden" onchange="onFileSelect(event)">
-    <div class="flex items-center gap-4 flex-wrap">
-      <div class="text-3xl">📂</div>
-      <div class="flex-1 min-w-0">
-        <p class="font-semibold text-sm" style="color:#4A2C1A;" id="uploadTitle">
-          Load / Update Excel Data
-        </p>
-        <p class="text-xs text-gray-500 mt-0.5" id="uploadSubtitle">
-          Drop your <strong>FDU ORDERING .xlsx</strong> here, or click to browse.
-          Do this every month when you update the Excel file.
-        </p>
-      </div>
-      <div id="uploadStatus" class="text-sm font-semibold hidden"></div>
-      <div class="text-xs px-3 py-1 rounded-full border text-gray-500 border-gray-300 whitespace-nowrap" id="dataSource">
-        Using bundled data
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- ══════════════════════  INPUT PANEL  ══════════════════════ -->
-<div class="max-w-screen-xl mx-auto px-6 pt-4">
+<div class="max-w-screen-xl mx-auto px-6 pt-6">
   <div class="bg-white rounded-2xl shadow-sm border border-cream-dark p-6">
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 items-end">
 
@@ -559,220 +516,6 @@ function exportCSV() {
   document.body.appendChild(a); a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-}
-
-/* ═════════════════════════════════════════════════
-   EXCEL UPLOAD + IN-BROWSER PROCESSING (SheetJS)
-═════════════════════════════════════════════════ */
-function onDragOver(e) {
-  e.preventDefault();
-  document.getElementById('uploadZone').classList.add('drag-over');
-}
-function onDragLeave(e) {
-  document.getElementById('uploadZone').classList.remove('drag-over');
-}
-function onDrop(e) {
-  e.preventDefault();
-  document.getElementById('uploadZone').classList.remove('drag-over');
-  const file = e.dataTransfer.files[0];
-  if (file) processExcelFile(file);
-}
-function onFileSelect(e) {
-  const file = e.target.files[0];
-  if (file) processExcelFile(file);
-}
-
-async function processExcelFile(file) {
-  const zone = document.getElementById('uploadZone');
-  const statusEl = document.getElementById('uploadStatus');
-  const sourceEl = document.getElementById('dataSource');
-
-  // Show loading
-  zone.classList.remove('success','error');
-  statusEl.classList.remove('hidden');
-  statusEl.innerHTML = '<span class="spin">⟳</span> Processing…';
-  statusEl.style.color = '#7A4F35';
-  document.getElementById('uploadSubtitle').textContent = 'Reading ' + file.name + '…';
-
-  try {
-    const buf  = await file.arrayBuffer();
-    const wb   = XLSX.read(buf, { type: 'array', cellDates: true });
-
-    // Identify sheets
-    const knownSheets = ['sales','transactions','BOM'];
-    const monthSheet  = wb.SheetNames.find(n => !knownSheets.includes(n));
-
-    const salesRows  = XLSX.utils.sheet_to_json(wb.Sheets['sales'],        {header:1, defval:null});
-    const txRows     = XLSX.utils.sheet_to_json(wb.Sheets['transactions'],  {header:1, defval:null});
-    const bomRows    = XLSX.utils.sheet_to_json(wb.Sheets['BOM'],           {header:1, defval:null});
-    const monthRows  = monthSheet
-      ? XLSX.utils.sheet_to_json(wb.Sheets[monthSheet], {header:1, defval:null})
-      : null;
-
-    FDU_DATA = buildFduData(salesRows, txRows, bomRows, monthRows);
-
-    zone.classList.add('success');
-    statusEl.innerHTML = '✓ Loaded';
-    statusEl.style.color = '#16A34A';
-    sourceEl.textContent  = '📄 ' + file.name + (monthSheet ? ' · ' + monthSheet : '');
-    sourceEl.style.background = '#DCFCE7';
-    sourceEl.style.color = '#166534';
-    sourceEl.style.borderColor = '#86EFAC';
-    document.getElementById('uploadTitle').textContent = 'Data updated from: ' + file.name;
-    document.getElementById('uploadSubtitle').textContent =
-      'Stores: ' + Object.keys(FDU_DATA.stores).length +
-      '  ·  Items: ' + Object.keys(FDU_DATA.items).length +
-      '  ·  Sales records processed successfully.';
-
-    // Refresh dropdown and recalculate
-    populateStoreDropdown();
-    onInputChange();
-
-  } catch (err) {
-    console.error(err);
-    zone.classList.add('error');
-    statusEl.innerHTML = '✗ Error';
-    statusEl.style.color = '#DC2626';
-    document.getElementById('uploadSubtitle').textContent =
-      'Could not read file: ' + err.message + '. Make sure you upload the correct FDU ORDERING .xlsx file.';
-  }
-}
-
-/* ─────────────────────────────────────────────────
-   IN-BROWSER DATA AGGREGATION  (mirrors Python script)
-───────────────────────────────────────────────── */
-function buildFduData(salesRows, txRows, bomRows, monthRows) {
-  // ── Store map: sales sheet cols M(12), N(13)
-  const stores = {};
-  for (let i = 1; i < salesRows.length; i++) {
-    const r = salesRows[i];
-    if (r[12] && r[13] && typeof r[12] === 'string') {
-      stores[r[12].trim()] = String(r[13]).trim();
-    }
-  }
-
-  // ── Items master: from BOM (col 6=SFG code, col 7=name)
-  const items = {};
-  for (let i = 1; i < bomRows.length; i++) {
-    const r = bomRows[i];
-    if (r[6] && String(r[6]).startsWith('SFG')) {
-      const c = String(r[6]).trim();
-      if (!items[c]) items[c] = { name: String(r[7]||c).trim(), moq: 1 };
-    }
-  }
-
-  // ── MOQ from month sheet (rows 7+, col 0=code, col 1=name, col 2=MOQ)
-  if (monthRows) {
-    for (let i = 7; i < monthRows.length; i++) {
-      const r = monthRows[i];
-      if (!r[0] || !String(r[0]).startsWith('SFG')) continue;
-      const c = String(r[0]).trim();
-      if (!items[c]) items[c] = { name: String(r[1]||c).trim(), moq: 1 };
-      if (r[2] && !isNaN(parseInt(r[2]))) items[c].moq = parseInt(r[2]);
-    }
-  }
-
-  // ── Parse sales rows (col 0=date, 1=store, 2=code, 4=actual_qty, 5=day, 6=name)
-  const storeItemSet    = {};  // store -> Set<code>
-  const storeDateItemQ  = {};  // store -> date -> code -> qty
-
-  for (let i = 1; i < salesRows.length; i++) {
-    const r = salesRows[i];
-    if (!r[0] || !r[1] || !r[2]) continue;
-    const date  = jsDateStr(r[0]);
-    const store = String(r[1]).trim();
-    const code  = String(r[2]).trim();
-    const qty   = parseFloat(r[4]) || 0;
-    const name  = r[6];
-
-    if (!date) continue;
-
-    if (!items[code] && name) items[code] = { name: String(name).trim(), moq: 1 };
-
-    if (!storeItemSet[store])   storeItemSet[store]  = new Set();
-    storeItemSet[store].add(code);
-
-    if (!storeDateItemQ[store])        storeDateItemQ[store]       = {};
-    if (!storeDateItemQ[store][date])  storeDateItemQ[store][date] = {};
-    storeDateItemQ[store][date][code]  = (storeDateItemQ[store][date][code] || 0) + qty;
-  }
-
-  // ── Parse transaction rows (col 0=date, 1=store, 2=orders, 3=net_rev, 4=day)
-  const txLookup = {};  // "store|date" -> {tx, ns, day}
-  for (let i = 1; i < txRows.length; i++) {
-    const r = txRows[i];
-    if (!r[0] || !r[1]) continue;
-    const date  = jsDateStr(r[0]);
-    const store = String(r[1]).trim();
-    const day   = String(r[4]||'').trim();
-    if (!date) continue;
-    const key = store + '|' + date;
-    if (!txLookup[key]) txLookup[key] = { tx: parseInt(r[2])||0, ns: parseFloat(r[3])||0, day };
-  }
-
-  // ── Build weekday date list per store
-  const storeWD = {};  // store -> weekday -> [{date, tx, ns}]
-  for (const [key, val] of Object.entries(txLookup)) {
-    const [store, date] = key.split('|');
-    if (!val.day) continue;
-    if (!storeWD[store])          storeWD[store]          = {};
-    if (!storeWD[store][val.day]) storeWD[store][val.day] = [];
-    storeWD[store][val.day].push({ date, tx: val.tx, ns: val.ns });
-  }
-
-  // ── Aggregate stats
-  const storeWeekdayStats = {};
-  for (const store of Object.keys(stores)) {
-    storeWeekdayStats[store] = {};
-    for (const [wd, recs] of Object.entries(storeWD[store] || {})) {
-      if (!recs.length) continue;
-      const n     = recs.length;
-      const avgTx = recs.reduce((s, d) => s + d.tx, 0) / n;
-      const avgNS = recs.reduce((s, d) => s + d.ns, 0) / n;
-
-      const itemIPT = {};
-      for (const code of (storeItemSet[store] || new Set())) {
-        let totalQty = 0, totalTx = 0;
-        for (const d of recs) {
-          totalQty += (storeDateItemQ[store]?.[d.date]?.[code]) || 0;
-          totalTx  += d.tx;
-        }
-        if (totalTx > 0 && totalQty > 0)
-          itemIPT[code] = Math.round((totalQty / totalTx) * 1e6) / 1e6;
-      }
-
-      storeWeekdayStats[store][wd] = {
-        avgTx: Math.round(avgTx * 100) / 100,
-        avgNS: Math.round(avgNS * 100) / 100,
-        dp: n,
-        items: itemIPT
-      };
-    }
-  }
-
-  return {
-    stores,
-    items,
-    storeItems: Object.fromEntries(
-      Object.entries(storeItemSet).map(([s, set]) => [s, [...set].sort()])
-    ),
-    storeWeekdayStats
-  };
-}
-
-/* ─────────────────────────────────────────────────
-   DATE HELPERS for SheetJS
-───────────────────────────────────────────────── */
-function jsDateStr(val) {
-  if (!val) return null;
-  if (val instanceof Date) return isoDate(val);
-  if (typeof val === 'number') {
-    // Excel serial → JS Date (SheetJS without cellDates)
-    const d = new Date(Math.round((val - 25569) * 86400 * 1000));
-    return isoDate(d);
-  }
-  if (typeof val === 'string' && val.length >= 10) return val.slice(0, 10);
-  return null;
 }
 
 /* ─────────────────────────────────────────────────
