@@ -3,7 +3,7 @@
 A browser-based tool for **The Whole Cake** store managers to predict and plan **Fresh Daily Unit (FDU)** orders.
 
 ## 🔗 Live Site
-**[Open the Order Calculator →](https://[your-username].github.io/fdu-ordering/)**
+**[Open the Order Calculator →](https://adarshsandyal.github.io/fdu-ordering/)**
 
 ---
 
