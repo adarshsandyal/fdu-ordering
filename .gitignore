@@ -1,0 +1,6 @@
+# Ignore the raw Excel and Python helper scripts
+*.xlsx
+*.xls
+*.py
+__pycache__/
+*.pyc

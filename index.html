@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TWC FDU Order Calculator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SheetJS for in-browser Excel parsing -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brown:  { DEFAULT: '#4A2C1A', light: '#7A4F35', dark: '#2E1A0E' },
+            cream:  { DEFAULT: '#F9F4ED', dark: '#EDE4D6' },
+            gold:   { DEFAULT: '#C8913A', light: '#E8B96A' },
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { background-color: #F9F4ED; font-family: 'Inter', ui-sans-serif, system-ui; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #EDE4D6; }
+    ::-webkit-scrollbar-thumb { background: #C8913A; border-radius: 3px; }
+
+    .form-input {
+      border: 1.5px solid #D1C4B2; border-radius: 8px;
+      padding: 8px 12px; font-size: 14px; width: 100%;
+      background: #fff; outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .form-input:focus { border-color: #C8913A; box-shadow: 0 0 0 3px rgba(200,145,58,0.15); }
+
+    .cell-input {
+      border: 1.5px solid #D1C4B2; border-radius: 6px;
+      padding: 4px 6px; width: 58px; text-align: center;
+      font-size: 13px; background: #fff; outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .cell-input:focus { border-color: #C8913A; box-shadow: 0 0 0 2px rgba(200,145,58,0.2); }
+    .override-input { border-color: #FCA5A5; }
+    .override-input:focus { border-color: #EF4444; box-shadow: 0 0 0 2px rgba(239,68,68,0.15); }
+    .override-input:not(:placeholder-shown) { border-color: #F97316; background: #FFF7ED; font-weight: 700; }
+
+    thead th { position: sticky; top: 0; z-index: 10; }
+    tbody tr:hover { background: #FDF6EE !important; }
+
+    /* Upload zone */
+    .upload-zone {
+      border: 2px dashed #C8913A; border-radius: 14px;
+      background: #FFFBF3; cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      background: #FFF3DC; border-color: #7A4F35;
+    }
+    .upload-zone.success { border-color: #16A34A; background: #F0FDF4; }
+    .upload-zone.error   { border-color: #DC2626; background: #FEF2F2; }
+
+    /* Spinner */
+    .spin { animation: spin 0.8s linear infinite; display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media print {
+      .no-print { display: none !important; }
+      header, .stat-card { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      thead th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      body { font-size: 11px; }
+      .cell-input { border: none; background: transparent; }
+    }
+
+    .final-big  { font-size: 17px; font-weight: 800; color: #4A2C1A; }
+    .final-zero { font-size: 14px; color: #CBD5E1; }
+    .stat-card  { border-radius: 14px; padding: 20px 24px; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- ══════════════════════  HEADER  ══════════════════════ -->
+<header style="background:#2E1A0E;" class="shadow-lg">
+  <div class="max-w-screen-xl mx-auto px-6 py-4 flex items-center justify-between flex-wrap gap-3">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style="background:#C8913A;">
+        <span class="text-white font-black text-lg">T</span>
+      </div>
+      <div>
+        <h1 class="text-white font-bold text-xl leading-tight">TWC FDU Order Calculator</h1>
+        <p class="text-xs" style="color:#C8913A;">Fresh Daily Units — Predictive Ordering</p>
+      </div>
+    </div>
+    <div class="flex gap-2 no-print">
+      <button onclick="exportCSV()"
+        class="px-4 py-2 rounded-lg text-sm font-semibold"
+        style="background:#C8913A;color:#fff;">⬇ Export CSV</button>
+      <button onclick="window.print()"
+        class="px-4 py-2 rounded-lg text-sm font-semibold border border-white text-white hover:bg-white hover:text-brown transition">
+        🖨 Print</button>
+    </div>
+  </div>
+</header>
+
+<!-- ══════════════════════  UPLOAD PANEL  ══════════════════════ -->
+<div class="max-w-screen-xl mx-auto px-6 pt-5 no-print">
+  <div class="upload-zone p-5" id="uploadZone"
+       ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)"
+       onclick="document.getElementById('fileInput').click()">
+    <input type="file" id="fileInput" accept=".xlsx,.xls" class="hidden" onchange="onFileSelect(event)">
+    <div class="flex items-center gap-4 flex-wrap">
+      <div class="text-3xl">📂</div>
+      <div class="flex-1 min-w-0">
+        <p class="font-semibold text-sm" style="color:#4A2C1A;" id="uploadTitle">
+          Load / Update Excel Data
+        </p>
+        <p class="text-xs text-gray-500 mt-0.5" id="uploadSubtitle">
+          Drop your <strong>FDU ORDERING .xlsx</strong> here, or click to browse.
+          Do this every month when you update the Excel file.
+        </p>
+      </div>
+      <div id="uploadStatus" class="text-sm font-semibold hidden"></div>
+      <div class="text-xs px-3 py-1 rounded-full border text-gray-500 border-gray-300 whitespace-nowrap" id="dataSource">
+        Using bundled data
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════  INPUT PANEL  ══════════════════════ -->
+<div class="max-w-screen-xl mx-auto px-6 pt-4">
+  <div class="bg-white rounded-2xl shadow-sm border border-cream-dark p-6">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 items-end">
+
+      <div>
+        <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Store</label>
+        <select id="storeSelect" class="form-input" onchange="onInputChange()">
+          <option value="">— Select Store —</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">
+          Consumption Date
+          <span class="normal-case font-normal text-gray-400 ml-1">(FDU delivery date)</span>
+        </label>
+        <input type="date" id="dateInput" class="form-input" onchange="onInputChange()" />
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">% Growth / Hike</label>
+        <div class="relative">
+          <input type="number" id="hikeInput" value="2" step="0.5" min="-50" max="200"
+            class="form-input pr-8" oninput="onInputChange()" />
+          <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 font-semibold text-sm">%</span>
+        </div>
+      </div>
+
+      <div class="rounded-xl px-4 py-3" style="background:#F9F4ED;">
+        <p class="text-xs text-gray-400 font-medium uppercase tracking-wider">Order to be placed by</p>
+        <p id="orderDateText" class="text-base font-bold mt-0.5" style="color:#4A2C1A;">—</p>
+        <p id="dayOfWeekText" class="text-xs text-gray-400 mt-0.5"></p>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════  EMPTY / NO-DATA STATES  ══════════════════════ -->
+<div id="emptyState" class="max-w-screen-xl mx-auto px-6 mt-8 text-center hidden">
+  <div class="inline-block p-8 bg-white rounded-2xl shadow-sm border border-cream-dark">
+    <div class="text-5xl mb-3">🥐</div>
+    <p class="text-gray-500">Select a store and consumption date to generate the order.</p>
+  </div>
+</div>
+
+<div id="noDataWarning" class="max-w-screen-xl mx-auto px-6 mt-5 hidden">
+  <div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-5 py-4 text-sm font-medium">
+    ⚠️  No historical data found for this store on that day of week. Try a different date or store.
+  </div>
+</div>
+
+<!-- ══════════════════════  SUMMARY CARDS  ══════════════════════ -->
+<div id="summarySection" class="max-w-screen-xl mx-auto px-6 mt-5 hidden">
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+
+    <div class="stat-card text-white" style="background:linear-gradient(135deg,#4A2C1A,#7A4F35);">
+      <p class="text-xs font-semibold uppercase tracking-wider" style="color:#E8B96A;">Projected Net Sales</p>
+      <p id="projNetSales" class="text-3xl font-black mt-1">₹0</p>
+      <p id="baseNetSales" class="text-xs mt-2 opacity-70"></p>
+    </div>
+
+    <div class="stat-card text-white" style="background:linear-gradient(135deg,#7A4F35,#C8913A);">
+      <p class="text-xs font-semibold uppercase tracking-wider" style="color:#FDE68A;">Projected Transactions</p>
+      <p id="projTx" class="text-3xl font-black mt-1">0</p>
+      <p id="baseTx" class="text-xs mt-2 opacity-80"></p>
+    </div>
+
+    <div class="stat-card" style="background:#FFF7ED;border:2px solid #C8913A;">
+      <p class="text-xs font-semibold uppercase tracking-wider" style="color:#92400E;">Total Packs to Order</p>
+      <p id="totalUnits" class="text-3xl font-black mt-1" style="color:#4A2C1A;">0</p>
+      <p id="totalItemCount" class="text-xs mt-2 text-gray-500"></p>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════  ORDER TABLE  ══════════════════════ -->
+<div id="tableSection" class="max-w-screen-xl mx-auto px-6 mt-5 mb-10 hidden">
+  <div class="bg-white rounded-2xl shadow-sm border border-cream-dark overflow-hidden">
+
+    <div class="px-6 py-4 border-b border-cream-dark flex items-center justify-between flex-wrap gap-2">
+      <div>
+        <h2 class="font-bold text-lg" style="color:#4A2C1A;">Order Details</h2>
+        <p id="consumptionLabel" class="text-xs text-gray-400 mt-0.5"></p>
+      </div>
+      <div class="flex items-center gap-3 no-print text-xs text-gray-400 flex-wrap">
+        <span>All quantities in <strong>packs</strong> (1 pack = MOQ units)</span>
+        <span>·</span>
+        <span>Override = manager's quantity (packs), replaces calculated</span>
+        <span>·</span>
+        <button onclick="clearAllOverrides()" class="text-red-400 underline hover:text-red-600">Clear overrides</button>
+      </div>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm border-collapse">
+        <thead>
+          <tr style="background:#4A2C1A;color:#fff;">
+            <th class="px-3 py-3 text-left font-semibold w-8">#</th>
+            <th class="px-3 py-3 text-left font-semibold">Item</th>
+            <th class="px-3 py-3 text-center font-semibold">MOQ<br><span class="text-xs font-normal opacity-60">units/pack</span></th>
+            <th class="px-3 py-3 text-center font-semibold">IPT<br><span class="text-xs font-normal opacity-60">items/txn</span></th>
+            <th class="px-3 py-3 text-center font-semibold">Proj. Units<br><span class="text-xs font-normal opacity-60">IPT × txns</span></th>
+            <th class="px-3 py-3 text-center font-semibold" style="background:#5C3A24;">SOH<br><span class="text-xs font-normal opacity-70">editable</span></th>
+            <th class="px-3 py-3 text-center font-semibold">Net Need<br><span class="text-xs font-normal opacity-60">proj − SOH</span></th>
+            <th class="px-3 py-3 text-center font-semibold" style="background:#C8913A;color:#2E1A0E;">
+              Order (Packs)<br><span class="text-xs font-normal opacity-80">⌈need÷MOQ⌉</span></th>
+            <th class="px-3 py-3 text-center font-semibold" style="background:#5C3A24;">Override<br><span class="text-xs font-normal opacity-70">packs</span></th>
+            <th class="px-3 py-3 text-center font-semibold" style="background:#C8913A;color:#2E1A0E;">Final Order<br><span class="text-xs font-normal opacity-80">packs</span></th>
+          </tr>
+        </thead>
+        <tbody id="orderTableBody"></tbody>
+        <tfoot>
+          <tr style="background:#F9F4ED;border-top:2px solid #C8913A;">
+            <td colspan="4" class="px-4 py-3 font-bold text-right text-sm" style="color:#4A2C1A;">TOTALS</td>
+            <td class="px-3 py-3 text-center font-bold text-sm" id="footProjUnits">—</td>
+            <td class="px-3 py-3 text-center font-bold text-sm" id="footSoh">—</td>
+            <td class="px-3 py-3 text-center font-bold text-sm" id="footNetNeed">—</td>
+            <td class="px-3 py-3 text-center font-bold text-sm" id="footMoqPacks">—</td>
+            <td class="px-3 py-3"></td>
+            <td class="px-3 py-3 text-center font-black text-lg" style="color:#4A2C1A;" id="footFinal">—</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════  SCRIPTS  ══════════════════════ -->
+<script src="data.js"></script>
+<script>
+
+/* ─────────────────────────────────────────────────
+   GLOBAL STATE
+───────────────────────────────────────────────── */
+let currentStats  = null;
+let currentProjTx = 0;
+
+/* ─────────────────────────────────────────────────
+   INIT
+───────────────────────────────────────────────── */
+function init() {
+  populateStoreDropdown();
+  // Default date = today
+  const t = new Date();
+  document.getElementById('dateInput').value = isoDate(t);
+  document.getElementById('emptyState').classList.remove('hidden');
+}
+
+function populateStoreDropdown() {
+  const sel = document.getElementById('storeSelect');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— Select Store —</option>';
+  Object.entries(FDU_DATA.stores)
+    .sort((a, b) => a[1].localeCompare(b[1]))
+    .forEach(([code, name]) => {
+      const opt = document.createElement('option');
+      opt.value = code;
+      opt.textContent = name + '  (' + code + ')';
+      if (code === cur) opt.selected = true;
+      sel.appendChild(opt);
+    });
+}
+
+/* ─────────────────────────────────────────────────
+   INPUT CHANGE
+───────────────────────────────────────────────── */
+function onInputChange() {
+  const store  = document.getElementById('storeSelect').value;
+  const dateS  = document.getElementById('dateInput').value;
+  const hike   = parseFloat(document.getElementById('hikeInput').value) || 0;
+
+  hide('noDataWarning');
+
+  if (!store || !dateS) {
+    show('emptyState'); hide('summarySection'); hide('tableSection');
+    return;
+  }
+  hide('emptyState');
+
+  const [yr, mo, dy] = dateS.split('-').map(Number);
+  const consDate = new Date(yr, mo - 1, dy);
+  const DAY = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const dow  = DAY[consDate.getDay()];
+
+  // Order date = consumption − 3 days
+  const ord = new Date(consDate); ord.setDate(ord.getDate() - 3);
+  document.getElementById('orderDateText').textContent =
+    ord.toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'});
+  document.getElementById('dayOfWeekText').textContent =
+    ord.toLocaleDateString('en-IN', {weekday:'long'});
+
+  const stats = FDU_DATA.storeWeekdayStats[store]?.[dow];
+  if (!stats) {
+    hide('summarySection'); hide('tableSection'); show('noDataWarning');
+    return;
+  }
+
+  currentStats  = stats;
+  currentProjTx = stats.avgTx * (1 + hike / 100);
+  const projNS  = stats.avgNS * (1 + hike / 100);
+
+  // Summary cards
+  document.getElementById('projNetSales').textContent = fmtINR(projNS);
+  document.getElementById('baseNetSales').textContent =
+    'Historical avg: ' + fmtINR(stats.avgNS) + '  (' + stats.dp + ' ' + dow + 's)';
+  document.getElementById('projTx').textContent = Math.round(currentProjTx).toLocaleString('en-IN');
+  document.getElementById('baseTx').textContent =
+    'Historical avg: ' + stats.avgTx.toFixed(1) + '  (' + stats.dp + ' ' + dow + 's)';
+  document.getElementById('consumptionLabel').textContent =
+    'Consumption: ' +
+    consDate.toLocaleDateString('en-IN', {weekday:'long', day:'2-digit', month:'long', year:'numeric'});
+
+  show('summarySection');
+
+  // Preserve SOH + overrides across recalcs
+  const prevSoh = collectVals('.soh-input');
+  const prevOvr = collectVals('.override-input');
+
+  buildTable(store, stats, currentProjTx, prevSoh, prevOvr);
+  updateTotals();
+  show('tableSection');
+}
+
+/* ─────────────────────────────────────────────────
+   BUILD TABLE
+───────────────────────────────────────────────── */
+function buildTable(store, stats, projTx, prevSoh, prevOvr) {
+  const tbody = document.getElementById('orderTableBody');
+  tbody.innerHTML = '';
+
+  const codes = (FDU_DATA.storeItems[store] || []).slice().sort((a, b) => {
+    const hA = (stats.items[a] || 0) > 0;
+    const hB = (stats.items[b] || 0) > 0;
+    if (hA && !hB) return -1;
+    if (!hA && hB) return  1;
+    return ((FDU_DATA.items[a]||{}).name||a).localeCompare((FDU_DATA.items[b]||{}).name||b);
+  });
+
+  codes.forEach((code, idx) => {
+    const info = FDU_DATA.items[code] || { name: code, moq: 1 };
+    const moq  = info.moq || 1;
+    const ipt  = stats.items[code] || 0;
+    const projU = ipt * projTx;
+
+    const soh   = parseFloat(prevSoh[code] || '0') || 0;
+    const ovStr = prevOvr[code] || '';
+    const hasOv = ovStr !== '' && !isNaN(parseFloat(ovStr));
+    const { rawNeed, moqPacks, finalPacks } = calcRow(projU, soh, moq, hasOv ? parseFloat(ovStr) : null);
+
+    const tr = document.createElement('tr');
+    tr.dataset.code = code;
+    tr.style.background = idx % 2 === 0 ? '#fff' : '#FDFAF6';
+
+    tr.innerHTML =
+      '<td class="px-3 py-2.5 text-gray-300 text-xs select-none">' + (idx+1) + '</td>' +
+      '<td class="px-3 py-2.5">' +
+        '<div class="font-semibold text-gray-800" style="font-size:13.5px;">' + esc(info.name) + '</div>' +
+        '<div class="text-xs text-gray-400 font-mono">' + code + '</div>' +
+      '</td>' +
+      '<td class="px-3 py-2.5 text-center text-gray-500 text-xs font-semibold">' + moq + '</td>' +
+      '<td class="px-3 py-2.5 text-center text-gray-500 text-xs">' +
+        (ipt > 0 ? '<span class="font-mono">' + ipt.toFixed(4) + '</span>' : '<span class="text-gray-300">—</span>') +
+      '</td>' +
+      '<td class="px-3 py-2.5 text-center text-gray-700 font-medium">' +
+        (ipt > 0 ? projU.toFixed(1) : '<span class="text-gray-300">—</span>') +
+      '</td>' +
+      /* SOH */
+      '<td class="px-3 py-2.5 text-center" style="background:#FFFBF5;">' +
+        '<input type="number" min="0" step="1" value="' + soh + '" ' +
+          'class="cell-input soh-input" data-code="' + code + '" ' +
+          'oninput="onCellChange(this)">' +
+      '</td>' +
+      /* Net Need */
+      '<td class="px-3 py-2.5 text-center net-need-cell">' + renderNeed(rawNeed) + '</td>' +
+      /* MOQ Packs */
+      '<td class="px-3 py-2.5 text-center moq-packs-cell font-semibold" style="background:#FFF8EE;">' +
+        (moqPacks > 0 ? '<span style="color:#4A2C1A;">' + moqPacks + '</span>' : '<span class="text-gray-300">—</span>') +
+      '</td>' +
+      /* Override */
+      '<td class="px-3 py-2.5 text-center" style="background:#FFFBF5;">' +
+        '<input type="number" min="0" step="1" placeholder="—" value="' + (hasOv ? ovStr : '') + '" ' +
+          'class="cell-input override-input" data-code="' + code + '" ' +
+          'oninput="onCellChange(this)">' +
+      '</td>' +
+      /* Final */
+      '<td class="px-3 py-2.5 text-center final-cell" style="background:#FFF8EE;">' +
+        renderFinal(finalPacks) +
+      '</td>';
+
+    tbody.appendChild(tr);
+  });
+}
+
+/* ─────────────────────────────────────────────────
+   CELL CHANGE → RECALCULATE ROW
+───────────────────────────────────────────────── */
+function onCellChange(input) {
+  const code = input.dataset.code;
+  const tr   = input.closest('tr');
+  const info = FDU_DATA.items[code] || { moq: 1 };
+  const ipt  = currentStats ? (currentStats.items[code] || 0) : 0;
+  const projU = ipt * currentProjTx;
+
+  const soh   = parseFloat(tr.querySelector('.soh-input').value) || 0;
+  const ovEl  = tr.querySelector('.override-input');
+  const ovStr = ovEl ? ovEl.value : '';
+  const hasOv = ovStr !== '' && !isNaN(parseFloat(ovStr));
+
+  const { rawNeed, moqPacks, finalPacks } = calcRow(projU, soh, info.moq || 1, hasOv ? parseFloat(ovStr) : null);
+
+  tr.querySelector('.net-need-cell').innerHTML  = renderNeed(rawNeed);
+  tr.querySelector('.moq-packs-cell').innerHTML =
+    moqPacks > 0 ? '<span style="color:#4A2C1A;">' + moqPacks + '</span>' : '<span class="text-gray-300">—</span>';
+  tr.querySelector('.final-cell').innerHTML = renderFinal(finalPacks);
+
+  updateTotals();
+}
+
+/* ─────────────────────────────────────────────────
+   CORE FORMULA
+   rawNeed   = max(projUnits − SOH, 0)
+   moqPacks  = ⌈rawNeed ÷ MOQ⌉        ← packs to order
+   finalPacks = override (packs) if set, else moqPacks
+───────────────────────────────────────────────── */
+function calcRow(projUnits, soh, moq, override) {
+  const rawNeed  = Math.max(projUnits - soh, 0);
+  const moqPacks = rawNeed > 0 ? Math.ceil(rawNeed / moq) : 0;
+  const finalPacks = (override !== null && override >= 0) ? override : moqPacks;
+  return { rawNeed, moqPacks, finalPacks };
+}
+
+/* ─────────────────────────────────────────────────
+   UPDATE FOOTER TOTALS + SUMMARY CARD
+───────────────────────────────────────────────── */
+function updateTotals() {
+  let tProj = 0, tSoh = 0, tNeed = 0, tPacks = 0, tFinal = 0, activeItems = 0;
+
+  document.querySelectorAll('#orderTableBody tr').forEach(tr => {
+    const code  = tr.dataset.code;
+    const info  = FDU_DATA.items[code] || { moq: 1 };
+    const ipt   = currentStats ? (currentStats.items[code] || 0) : 0;
+    const projU = ipt * currentProjTx;
+    const soh   = parseFloat(tr.querySelector('.soh-input')?.value) || 0;
+    const ovEl  = tr.querySelector('.override-input');
+    const ovStr = ovEl ? ovEl.value : '';
+    const hasOv = ovStr !== '' && !isNaN(parseFloat(ovStr));
+    const { rawNeed, moqPacks, finalPacks } = calcRow(projU, soh, info.moq || 1, hasOv ? parseFloat(ovStr) : null);
+
+    tProj  += projU;
+    tSoh   += soh;
+    tNeed  += rawNeed;
+    tPacks += moqPacks;
+    tFinal += finalPacks;
+    if (finalPacks > 0) activeItems++;
+  });
+
+  setText('footProjUnits', tProj.toFixed(1));
+  setText('footSoh',       tSoh.toFixed(0));
+  setText('footNetNeed',   tNeed.toFixed(1));
+  setText('footMoqPacks',  tPacks);
+  setText('footFinal',     tFinal);
+  document.getElementById('totalUnits').textContent     = tFinal;
+  document.getElementById('totalItemCount').textContent = activeItems + ' items with non-zero order';
+}
+
+/* ─────────────────────────────────────────────────
+   CLEAR OVERRIDES
+───────────────────────────────────────────────── */
+function clearAllOverrides() {
+  document.querySelectorAll('.override-input').forEach(el => {
+    el.value = '';
+    onCellChange(el);
+  });
+}
+
+/* ─────────────────────────────────────────────────
+   EXPORT CSV
+───────────────────────────────────────────────── */
+function exportCSV() {
+  const storeCode = document.getElementById('storeSelect').value;
+  const storeName = FDU_DATA.stores[storeCode] || storeCode;
+  const dateStr   = document.getElementById('dateInput').value;
+  const hike      = document.getElementById('hikeInput').value;
+  const orderDate = document.getElementById('orderDateText').textContent;
+
+  let csv = 'TWC FDU Order Report\n';
+  csv += 'Store,' + storeName + ' (' + storeCode + ')\n';
+  csv += 'Consumption Date,' + dateStr + '\n';
+  csv += 'Order Placement Date,' + orderDate + '\n';
+  csv += 'Growth %,' + hike + '%\n';
+  csv += 'Projected Net Sales,' + document.getElementById('projNetSales').textContent + '\n';
+  csv += 'Projected Transactions,' + document.getElementById('projTx').textContent + '\n';
+  csv += '\n';
+  csv += '#,Code,Item Name,MOQ (units/pack),IPT,Proj Units,SOH,Net Need,MOQ Packs,Override (packs),Final Order (packs)\n';
+
+  document.querySelectorAll('#orderTableBody tr').forEach((tr, idx) => {
+    const code  = tr.dataset.code;
+    const info  = FDU_DATA.items[code] || { name: code, moq: 1 };
+    const ipt   = currentStats ? (currentStats.items[code] || 0) : 0;
+    const projU = ipt * currentProjTx;
+    const soh   = parseFloat(tr.querySelector('.soh-input')?.value) || 0;
+    const ovEl  = tr.querySelector('.override-input');
+    const ovStr = ovEl ? ovEl.value : '';
+    const hasOv = ovStr !== '' && !isNaN(parseFloat(ovStr));
+    const { rawNeed, moqPacks, finalPacks } = calcRow(projU, soh, info.moq || 1, hasOv ? parseFloat(ovStr) : null);
+
+    csv += [
+      idx+1, code,
+      '"' + info.name.replace(/"/g,'""') + '"',
+      info.moq,
+      ipt > 0 ? ipt.toFixed(4) : '',
+      projU.toFixed(2), soh,
+      rawNeed.toFixed(1), moqPacks,
+      ovStr, finalPacks
+    ].join(',') + '\n';
+  });
+
+  csv += '\n,,,,,,,,,Total,' + document.getElementById('footFinal').textContent + '\n';
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = 'FDU_Order_' + storeName.replace(/\s+/g,'_') + '_' + dateStr + '.csv';
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* ═════════════════════════════════════════════════
+   EXCEL UPLOAD + IN-BROWSER PROCESSING (SheetJS)
+═════════════════════════════════════════════════ */
+function onDragOver(e) {
+  e.preventDefault();
+  document.getElementById('uploadZone').classList.add('drag-over');
+}
+function onDragLeave(e) {
+  document.getElementById('uploadZone').classList.remove('drag-over');
+}
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('uploadZone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) processExcelFile(file);
+}
+function onFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) processExcelFile(file);
+}
+
+async function processExcelFile(file) {
+  const zone = document.getElementById('uploadZone');
+  const statusEl = document.getElementById('uploadStatus');
+  const sourceEl = document.getElementById('dataSource');
+
+  // Show loading
+  zone.classList.remove('success','error');
+  statusEl.classList.remove('hidden');
+  statusEl.innerHTML = '<span class="spin">⟳</span> Processing…';
+  statusEl.style.color = '#7A4F35';
+  document.getElementById('uploadSubtitle').textContent = 'Reading ' + file.name + '…';
+
+  try {
+    const buf  = await file.arrayBuffer();
+    const wb   = XLSX.read(buf, { type: 'array', cellDates: true });
+
+    // Identify sheets
+    const knownSheets = ['sales','transactions','BOM'];
+    const monthSheet  = wb.SheetNames.find(n => !knownSheets.includes(n));
+
+    const salesRows  = XLSX.utils.sheet_to_json(wb.Sheets['sales'],        {header:1, defval:null});
+    const txRows     = XLSX.utils.sheet_to_json(wb.Sheets['transactions'],  {header:1, defval:null});
+    const bomRows    = XLSX.utils.sheet_to_json(wb.Sheets['BOM'],           {header:1, defval:null});
+    const monthRows  = monthSheet
+      ? XLSX.utils.sheet_to_json(wb.Sheets[monthSheet], {header:1, defval:null})
+      : null;
+
+    FDU_DATA = buildFduData(salesRows, txRows, bomRows, monthRows);
+
+    zone.classList.add('success');
+    statusEl.innerHTML = '✓ Loaded';
+    statusEl.style.color = '#16A34A';
+    sourceEl.textContent  = '📄 ' + file.name + (monthSheet ? ' · ' + monthSheet : '');
+    sourceEl.style.background = '#DCFCE7';
+    sourceEl.style.color = '#166534';
+    sourceEl.style.borderColor = '#86EFAC';
+    document.getElementById('uploadTitle').textContent = 'Data updated from: ' + file.name;
+    document.getElementById('uploadSubtitle').textContent =
+      'Stores: ' + Object.keys(FDU_DATA.stores).length +
+      '  ·  Items: ' + Object.keys(FDU_DATA.items).length +
+      '  ·  Sales records processed successfully.';
+
+    // Refresh dropdown and recalculate
+    populateStoreDropdown();
+    onInputChange();
+
+  } catch (err) {
+    console.error(err);
+    zone.classList.add('error');
+    statusEl.innerHTML = '✗ Error';
+    statusEl.style.color = '#DC2626';
+    document.getElementById('uploadSubtitle').textContent =
+      'Could not read file: ' + err.message + '. Make sure you upload the correct FDU ORDERING .xlsx file.';
+  }
+}
+
+/* ─────────────────────────────────────────────────
+   IN-BROWSER DATA AGGREGATION  (mirrors Python script)
+───────────────────────────────────────────────── */
+function buildFduData(salesRows, txRows, bomRows, monthRows) {
+  // ── Store map: sales sheet cols M(12), N(13)
+  const stores = {};
+  for (let i = 1; i < salesRows.length; i++) {
+    const r = salesRows[i];
+    if (r[12] && r[13] && typeof r[12] === 'string') {
+      stores[r[12].trim()] = String(r[13]).trim();
+    }
+  }
+
+  // ── Items master: from BOM (col 6=SFG code, col 7=name)
+  const items = {};
+  for (let i = 1; i < bomRows.length; i++) {
+    const r = bomRows[i];
+    if (r[6] && String(r[6]).startsWith('SFG')) {
+      const c = String(r[6]).trim();
+      if (!items[c]) items[c] = { name: String(r[7]||c).trim(), moq: 1 };
+    }
+  }
+
+  // ── MOQ from month sheet (rows 7+, col 0=code, col 1=name, col 2=MOQ)
+  if (monthRows) {
+    for (let i = 7; i < monthRows.length; i++) {
+      const r = monthRows[i];
+      if (!r[0] || !String(r[0]).startsWith('SFG')) continue;
+      const c = String(r[0]).trim();
+      if (!items[c]) items[c] = { name: String(r[1]||c).trim(), moq: 1 };
+      if (r[2] && !isNaN(parseInt(r[2]))) items[c].moq = parseInt(r[2]);
+    }
+  }
+
+  // ── Parse sales rows (col 0=date, 1=store, 2=code, 4=actual_qty, 5=day, 6=name)
+  const storeItemSet    = {};  // store -> Set<code>
+  const storeDateItemQ  = {};  // store -> date -> code -> qty
+
+  for (let i = 1; i < salesRows.length; i++) {
+    const r = salesRows[i];
+    if (!r[0] || !r[1] || !r[2]) continue;
+    const date  = jsDateStr(r[0]);
+    const store = String(r[1]).trim();
+    const code  = String(r[2]).trim();
+    const qty   = parseFloat(r[4]) || 0;
+    const name  = r[6];
+
+    if (!date) continue;
+
+    if (!items[code] && name) items[code] = { name: String(name).trim(), moq: 1 };
+
+    if (!storeItemSet[store])   storeItemSet[store]  = new Set();
+    storeItemSet[store].add(code);
+
+    if (!storeDateItemQ[store])        storeDateItemQ[store]       = {};
+    if (!storeDateItemQ[store][date])  storeDateItemQ[store][date] = {};
+    storeDateItemQ[store][date][code]  = (storeDateItemQ[store][date][code] || 0) + qty;
+  }
+
+  // ── Parse transaction rows (col 0=date, 1=store, 2=orders, 3=net_rev, 4=day)
+  const txLookup = {};  // "store|date" -> {tx, ns, day}
+  for (let i = 1; i < txRows.length; i++) {
+    const r = txRows[i];
+    if (!r[0] || !r[1]) continue;
+    const date  = jsDateStr(r[0]);
+    const store = String(r[1]).trim();
+    const day   = String(r[4]||'').trim();
+    if (!date) continue;
+    const key = store + '|' + date;
+    if (!txLookup[key]) txLookup[key] = { tx: parseInt(r[2])||0, ns: parseFloat(r[3])||0, day };
+  }
+
+  // ── Build weekday date list per store
+  const storeWD = {};  // store -> weekday -> [{date, tx, ns}]
+  for (const [key, val] of Object.entries(txLookup)) {
+    const [store, date] = key.split('|');
+    if (!val.day) continue;
+    if (!storeWD[store])          storeWD[store]          = {};
+    if (!storeWD[store][val.day]) storeWD[store][val.day] = [];
+    storeWD[store][val.day].push({ date, tx: val.tx, ns: val.ns });
+  }
+
+  // ── Aggregate stats
+  const storeWeekdayStats = {};
+  for (const store of Object.keys(stores)) {
+    storeWeekdayStats[store] = {};
+    for (const [wd, recs] of Object.entries(storeWD[store] || {})) {
+      if (!recs.length) continue;
+      const n     = recs.length;
+      const avgTx = recs.reduce((s, d) => s + d.tx, 0) / n;
+      const avgNS = recs.reduce((s, d) => s + d.ns, 0) / n;
+
+      const itemIPT = {};
+      for (const code of (storeItemSet[store] || new Set())) {
+        let totalQty = 0, totalTx = 0;
+        for (const d of recs) {
+          totalQty += (storeDateItemQ[store]?.[d.date]?.[code]) || 0;
+          totalTx  += d.tx;
+        }
+        if (totalTx > 0 && totalQty > 0)
+          itemIPT[code] = Math.round((totalQty / totalTx) * 1e6) / 1e6;
+      }
+
+      storeWeekdayStats[store][wd] = {
+        avgTx: Math.round(avgTx * 100) / 100,
+        avgNS: Math.round(avgNS * 100) / 100,
+        dp: n,
+        items: itemIPT
+      };
+    }
+  }
+
+  return {
+    stores,
+    items,
+    storeItems: Object.fromEntries(
+      Object.entries(storeItemSet).map(([s, set]) => [s, [...set].sort()])
+    ),
+    storeWeekdayStats
+  };
+}
+
+/* ─────────────────────────────────────────────────
+   DATE HELPERS for SheetJS
+───────────────────────────────────────────────── */
+function jsDateStr(val) {
+  if (!val) return null;
+  if (val instanceof Date) return isoDate(val);
+  if (typeof val === 'number') {
+    // Excel serial → JS Date (SheetJS without cellDates)
+    const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+    return isoDate(d);
+  }
+  if (typeof val === 'string' && val.length >= 10) return val.slice(0, 10);
+  return null;
+}
+
+/* ─────────────────────────────────────────────────
+   UI HELPERS
+───────────────────────────────────────────────── */
+function renderNeed(v) {
+  if (v <= 0) return '<span class="text-gray-300">0</span>';
+  return '<span class="font-semibold" style="color:#D97706;">' + v.toFixed(1) + '</span>';
+}
+function renderFinal(v) {
+  if (v <= 0) return '<span class="final-zero">—</span>';
+  return '<span class="final-big">' + v + '</span>';
+}
+function collectVals(sel) {
+  const m = {};
+  document.querySelectorAll(sel).forEach(el => { if (el.dataset.code) m[el.dataset.code] = el.value; });
+  return m;
+}
+function fmtINR(v) { return '₹' + Math.round(v).toLocaleString('en-IN'); }
+function isoDate(d) {
+  return d.getFullYear() + '-' +
+    String(d.getMonth()+1).padStart(2,'0') + '-' +
+    String(d.getDate()).padStart(2,'0');
+}
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function setText(id, v) { const el = document.getElementById(id); if (el) el.textContent = v; }
+function show(id)  { document.getElementById(id)?.classList.remove('hidden'); }
+function hide(id)  { document.getElementById(id)?.classList.add('hidden'); }
+
+/* ─────────────────────────────────────────────────
+   BOOT
+───────────────────────────────────────────────── */
+init();
+</script>
+</body>
+</html>
