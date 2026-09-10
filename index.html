@@ -89,7 +89,7 @@
 <!-- ══════════════════════  INPUT PANEL  ══════════════════════ -->
 <div class="max-w-screen-xl mx-auto px-6 pt-6">
   <div class="bg-white rounded-2xl shadow-sm border border-cream-dark p-6">
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 items-end">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-5 items-end">
 
       <div>
         <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">City</label>
@@ -107,10 +107,18 @@
 
       <div>
         <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">
-          Consumption Date
-          <span class="normal-case font-normal text-gray-400 ml-1">(FDU delivery date)</span>
+          From Date
+          <span class="normal-case font-normal text-gray-400 ml-1">(consumption)</span>
         </label>
-        <input type="date" id="dateInput" class="form-input" onchange="onInputChange()" />
+        <input type="date" id="dateFrom" class="form-input" onchange="onDateFromChange()" />
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">
+          To Date
+          <span class="normal-case font-normal text-gray-400 ml-1">(consumption)</span>
+        </label>
+        <input type="date" id="dateTo" class="form-input" onchange="onInputChange()" />
       </div>
 
       <div>
@@ -136,7 +144,7 @@
 <div id="emptyState" class="max-w-screen-xl mx-auto px-6 mt-8 text-center hidden">
   <div class="inline-block p-8 bg-white rounded-2xl shadow-sm border border-cream-dark">
     <div class="text-5xl mb-3">🥐</div>
-    <p class="text-gray-500">Select a store and consumption date to generate the order.</p>
+    <p class="text-gray-500">Select a store and consumption date(s) to generate the order.</p>
   </div>
 </div>
 
@@ -233,8 +241,9 @@
 /* ─────────────────────────────────────────────────
    GLOBAL STATE
 ───────────────────────────────────────────────── */
-let currentStats  = null;
-let currentProjTx = 0;
+let currentItemProjU = {};   // code → accumulated projected units across all days
+let currentTotalProjTx = 0;  // accumulated projected transactions
+let currentTotalProjNS = 0;  // accumulated projected net sales
 
 /* ─────────────────────────────────────────────────
    INIT
@@ -242,16 +251,16 @@ let currentProjTx = 0;
 function init() {
   populateCityDropdown();
   populateStoreDropdown();
-  // Default date = today
+  // Default dates = today (single day)
   const t = new Date();
-  document.getElementById('dateInput').value = isoDate(t);
+  document.getElementById('dateFrom').value = isoDate(t);
+  document.getElementById('dateTo').value   = isoDate(t);
   document.getElementById('emptyState').classList.remove('hidden');
 }
 
 function populateCityDropdown() {
   const sel = document.getElementById('citySelect');
   const cities = FDU_DATA.storeCities || {};
-  // Get unique cities sorted alphabetically
   const uniqueCities = [...new Set(Object.values(cities))].sort();
   sel.innerHTML = '<option value="">All Cities</option>';
   uniqueCities.forEach(city => {
@@ -263,7 +272,6 @@ function populateCityDropdown() {
 }
 
 function onCityChange() {
-  // Reset store selection and repopulate filtered stores
   populateStoreDropdown(true);
   onInputChange();
 }
@@ -287,54 +295,134 @@ function populateStoreDropdown(resetSelection) {
     });
 }
 
+/* When From date changes, auto-set To = From (user can extend To if needed) */
+function onDateFromChange() {
+  const fromVal = document.getElementById('dateFrom').value;
+  const toEl    = document.getElementById('dateTo');
+  if (fromVal) {
+    // If To is empty or before From, snap To = From
+    if (!toEl.value || toEl.value < fromVal) {
+      toEl.value = fromVal;
+    }
+  }
+  onInputChange();
+}
+
 /* ─────────────────────────────────────────────────
-   INPUT CHANGE
+   HELPER: enumerate dates From → To
+───────────────────────────────────────────────── */
+function dateRange(fromStr, toStr) {
+  const dates = [];
+  const [fy, fm, fd] = fromStr.split('-').map(Number);
+  const [ty, tm, td] = toStr.split('-').map(Number);
+  const cur = new Date(fy, fm - 1, fd);
+  const end = new Date(ty, tm - 1, td);
+  while (cur <= end) {
+    dates.push(new Date(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return dates;
+}
+
+/* ─────────────────────────────────────────────────
+   INPUT CHANGE — multi-day accumulation
 ───────────────────────────────────────────────── */
 function onInputChange() {
-  const store  = document.getElementById('storeSelect').value;
-  const dateS  = document.getElementById('dateInput').value;
-  const hike   = parseFloat(document.getElementById('hikeInput').value) || 0;
+  const store   = document.getElementById('storeSelect').value;
+  const fromStr = document.getElementById('dateFrom').value;
+  const toStr   = document.getElementById('dateTo').value;
+  const hike    = parseFloat(document.getElementById('hikeInput').value) || 0;
 
   hide('noDataWarning');
 
-  if (!store || !dateS) {
+  if (!store || !fromStr) {
     show('emptyState'); hide('summarySection'); hide('tableSection');
     return;
   }
   hide('emptyState');
 
-  const [yr, mo, dy] = dateS.split('-').map(Number);
-  const consDate = new Date(yr, mo - 1, dy);
+  // Ensure To ≥ From
+  const effectiveTo = (toStr && toStr >= fromStr) ? toStr : fromStr;
+  const dates = dateRange(fromStr, effectiveTo);
   const DAY = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const dow  = DAY[consDate.getDay()];
+  const isMultiDay = dates.length > 1;
 
-  // Order date = consumption − 3 days
-  const ord = new Date(consDate); ord.setDate(ord.getDate() - 3);
+  // Order date = earliest consumption date − 3 days
+  const ord = new Date(dates[0]); ord.setDate(ord.getDate() - 3);
   document.getElementById('orderDateText').textContent =
     ord.toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'});
   document.getElementById('dayOfWeekText').textContent =
     ord.toLocaleDateString('en-IN', {weekday:'long'});
 
-  const stats = FDU_DATA.storeWeekdayStats[store]?.[dow];
-  if (!stats) {
+  // ── Accumulate across all days ──
+  currentItemProjU   = {};
+  currentTotalProjTx = 0;
+  currentTotalProjNS = 0;
+  let daysWithData   = 0;
+  let dayLabels      = [];
+
+  const allItemCodes = new Set(FDU_DATA.storeItems[store] || []);
+
+  dates.forEach(d => {
+    const dow   = DAY[d.getDay()];
+    const stats = FDU_DATA.storeWeekdayStats[store]?.[dow];
+    if (!stats) return;
+
+    daysWithData++;
+    const projTx = stats.avgTx * (1 + hike / 100);
+    const projNS = stats.avgNS * (1 + hike / 100);
+    currentTotalProjTx += projTx;
+    currentTotalProjNS += projNS;
+    dayLabels.push(dow);
+
+    // Accumulate per-item projected units
+    allItemCodes.forEach(code => {
+      const ipt = stats.items[code] || 0;
+      if (ipt > 0) {
+        currentItemProjU[code] = (currentItemProjU[code] || 0) + ipt * projTx;
+      }
+    });
+  });
+
+  if (daysWithData === 0) {
     hide('summarySection'); hide('tableSection'); show('noDataWarning');
     return;
   }
 
-  currentStats  = stats;
-  currentProjTx = stats.avgTx * (1 + hike / 100);
-  const projNS  = stats.avgNS * (1 + hike / 100);
+  // ── Summary cards ──
+  document.getElementById('projNetSales').textContent = fmtINR(currentTotalProjNS);
+  if (isMultiDay) {
+    document.getElementById('baseNetSales').textContent =
+      'Accumulated over ' + dates.length + ' day(s), ' + daysWithData + ' with data';
+  } else {
+    const dow = DAY[dates[0].getDay()];
+    const stats = FDU_DATA.storeWeekdayStats[store]?.[dow];
+    document.getElementById('baseNetSales').textContent =
+      'Historical avg: ' + fmtINR(stats.avgNS) + '  (' + stats.dp + ' ' + dow + 's)';
+  }
 
-  // Summary cards
-  document.getElementById('projNetSales').textContent = fmtINR(projNS);
-  document.getElementById('baseNetSales').textContent =
-    'Historical avg: ' + fmtINR(stats.avgNS) + '  (' + stats.dp + ' ' + dow + 's)';
-  document.getElementById('projTx').textContent = Math.round(currentProjTx).toLocaleString('en-IN');
-  document.getElementById('baseTx').textContent =
-    'Historical avg: ' + stats.avgTx.toFixed(1) + '  (' + stats.dp + ' ' + dow + 's)';
-  document.getElementById('consumptionLabel').textContent =
-    'Consumption: ' +
-    consDate.toLocaleDateString('en-IN', {weekday:'long', day:'2-digit', month:'long', year:'numeric'});
+  document.getElementById('projTx').textContent = Math.round(currentTotalProjTx).toLocaleString('en-IN');
+  if (isMultiDay) {
+    document.getElementById('baseTx').textContent =
+      'Days: ' + dayLabels.join(', ');
+  } else {
+    const dow = DAY[dates[0].getDay()];
+    const stats = FDU_DATA.storeWeekdayStats[store]?.[dow];
+    document.getElementById('baseTx').textContent =
+      'Historical avg: ' + stats.avgTx.toFixed(1) + '  (' + stats.dp + ' ' + dow + 's)';
+  }
+
+  // Consumption label
+  if (isMultiDay) {
+    const fmt = d => d.toLocaleDateString('en-IN', {day:'2-digit', month:'short'});
+    document.getElementById('consumptionLabel').textContent =
+      'Consumption: ' + fmt(dates[0]) + ' → ' + fmt(dates[dates.length - 1]) +
+      '  (' + dates.length + ' days)';
+  } else {
+    document.getElementById('consumptionLabel').textContent =
+      'Consumption: ' +
+      dates[0].toLocaleDateString('en-IN', {weekday:'long', day:'2-digit', month:'long', year:'numeric'});
+  }
 
   show('summarySection');
 
@@ -342,21 +430,21 @@ function onInputChange() {
   const prevSoh = collectVals('.soh-input');
   const prevOvr = collectVals('.override-input');
 
-  buildTable(store, stats, currentProjTx, prevSoh, prevOvr);
+  buildTable(store, prevSoh, prevOvr);
   updateTotals();
   show('tableSection');
 }
 
 /* ─────────────────────────────────────────────────
-   BUILD TABLE
+   BUILD TABLE — uses accumulated currentItemProjU
 ───────────────────────────────────────────────── */
-function buildTable(store, stats, projTx, prevSoh, prevOvr) {
+function buildTable(store, prevSoh, prevOvr) {
   const tbody = document.getElementById('orderTableBody');
   tbody.innerHTML = '';
 
   const codes = (FDU_DATA.storeItems[store] || []).slice().sort((a, b) => {
-    const hA = (stats.items[a] || 0) > 0;
-    const hB = (stats.items[b] || 0) > 0;
+    const hA = (currentItemProjU[a] || 0) > 0;
+    const hB = (currentItemProjU[b] || 0) > 0;
     if (hA && !hB) return -1;
     if (!hA && hB) return  1;
     return ((FDU_DATA.items[a]||{}).name||a).localeCompare((FDU_DATA.items[b]||{}).name||b);
@@ -366,8 +454,7 @@ function buildTable(store, stats, projTx, prevSoh, prevOvr) {
     const info = FDU_DATA.items[code] || {};
     const itemName = (info.name && info.name !== 'null') ? info.name : code;
     const moq  = (info.moq !== undefined && info.moq !== null && !isNaN(info.moq)) ? info.moq : 1;
-    const ipt  = stats.items[code] || 0;
-    const projU = ipt * projTx;
+    const projU = currentItemProjU[code] || 0;
 
     const soh   = parseFloat(prevSoh[code] || '0') || 0;
     const ovStr = prevOvr[code] || '';
@@ -386,10 +473,10 @@ function buildTable(store, stats, projTx, prevSoh, prevOvr) {
       '</td>' +
       '<td class="px-3 py-2.5 text-center text-gray-500 text-xs font-semibold">' + moq + '</td>' +
       '<td class="px-3 py-2.5 text-center text-gray-500 text-xs">' +
-        (ipt > 0 ? '<span class="font-mono">' + ipt.toFixed(4) + '</span>' : '<span class="text-gray-300">—</span>') +
+        (projU > 0 ? '<span class="font-mono">' + (projU / Math.max(currentTotalProjTx, 1)).toFixed(4) + '</span>' : '<span class="text-gray-300">—</span>') +
       '</td>' +
       '<td class="px-3 py-2.5 text-center text-gray-700 font-medium">' +
-        (ipt > 0 ? projU.toFixed(1) : '<span class="text-gray-300">—</span>') +
+        (projU > 0 ? projU.toFixed(1) : '<span class="text-gray-300">—</span>') +
       '</td>' +
       /* SOH */
       '<td class="px-3 py-2.5 text-center" style="background:#FFFBF5;">' +
@@ -425,8 +512,7 @@ function onCellChange(input) {
   const code = input.dataset.code;
   const tr   = input.closest('tr');
   const info = FDU_DATA.items[code] || { moq: 1 };
-  const ipt  = currentStats ? (currentStats.items[code] || 0) : 0;
-  const projU = ipt * currentProjTx;
+  const projU = currentItemProjU[code] || 0;
 
   const soh   = parseFloat(tr.querySelector('.soh-input').value) || 0;
   const ovEl  = tr.querySelector('.override-input');
@@ -465,8 +551,7 @@ function updateTotals() {
   document.querySelectorAll('#orderTableBody tr').forEach(tr => {
     const code  = tr.dataset.code;
     const info  = FDU_DATA.items[code] || { moq: 1 };
-    const ipt   = currentStats ? (currentStats.items[code] || 0) : 0;
-    const projU = ipt * currentProjTx;
+    const projU = currentItemProjU[code] || 0;
     const soh   = parseFloat(tr.querySelector('.soh-input')?.value) || 0;
     const ovEl  = tr.querySelector('.override-input');
     const ovStr = ovEl ? ovEl.value : '';
@@ -506,25 +591,27 @@ function clearAllOverrides() {
 function exportCSV() {
   const storeCode = document.getElementById('storeSelect').value;
   const storeName = FDU_DATA.stores[storeCode] || storeCode;
-  const dateStr   = document.getElementById('dateInput').value;
+  const fromStr   = document.getElementById('dateFrom').value;
+  const toStr     = document.getElementById('dateTo').value;
   const hike      = document.getElementById('hikeInput').value;
   const orderDate = document.getElementById('orderDateText').textContent;
+  const isRange   = fromStr !== toStr;
 
   let csv = 'TWC FDU Order Report\n';
   csv += 'Store,' + storeName + ' (' + storeCode + ')\n';
-  csv += 'Consumption Date,' + dateStr + '\n';
+  csv += 'Consumption Date,' + (isRange ? fromStr + ' to ' + toStr : fromStr) + '\n';
   csv += 'Order Placement Date,' + orderDate + '\n';
   csv += 'Growth %,' + hike + '%\n';
   csv += 'Projected Net Sales,' + document.getElementById('projNetSales').textContent + '\n';
   csv += 'Projected Transactions,' + document.getElementById('projTx').textContent + '\n';
   csv += '\n';
-  csv += '#,Code,Item Name,MOQ (units/pack),IPT,Proj Units,SOH,Net Need,MOQ Packs,Override (packs),Final Order (packs)\n';
+  csv += '#,Code,Item Name,MOQ (units/pack),Avg IPT,Proj Units (total),SOH,Net Need,MOQ Packs,Override (packs),Final Order (packs)\n';
 
   document.querySelectorAll('#orderTableBody tr').forEach((tr, idx) => {
     const code  = tr.dataset.code;
     const info  = FDU_DATA.items[code] || { name: code, moq: 1 };
-    const ipt   = currentStats ? (currentStats.items[code] || 0) : 0;
-    const projU = ipt * currentProjTx;
+    const projU = currentItemProjU[code] || 0;
+    const avgIpt = currentTotalProjTx > 0 ? projU / currentTotalProjTx : 0;
     const soh   = parseFloat(tr.querySelector('.soh-input')?.value) || 0;
     const ovEl  = tr.querySelector('.override-input');
     const ovStr = ovEl ? ovEl.value : '';
@@ -535,7 +622,7 @@ function exportCSV() {
       idx+1, code,
       '"' + info.name.replace(/"/g,'""') + '"',
       info.moq,
-      ipt > 0 ? ipt.toFixed(4) : '',
+      avgIpt > 0 ? avgIpt.toFixed(4) : '',
       projU.toFixed(2), soh,
       Math.ceil(rawNeed), moqPacks,
       ovStr, finalPacks
@@ -548,7 +635,7 @@ function exportCSV() {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href = url;
-  a.download = 'FDU_Order_' + storeName.replace(/\s+/g,'_') + '_' + dateStr + '.csv';
+  a.download = 'FDU_Order_' + storeName.replace(/\s+/g,'_') + '_' + fromStr + (isRange ? '_to_' + toStr : '') + '.csv';
   document.body.appendChild(a); a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
@@ -575,7 +662,7 @@ function collectVals(sel) {
   document.querySelectorAll(sel).forEach(el => { if (el.dataset.code) m[el.dataset.code] = el.value; });
   return m;
 }
-function fmtINR(v) { return '₹' + Math.round(v).toLocaleString('en-IN'); }
+function fmtINR(v) { return '\u20B9' + Math.round(v).toLocaleString('en-IN'); }
 function isoDate(d) {
   return d.getFullYear() + '-' +
     String(d.getMonth()+1).padStart(2,'0') + '-' +
