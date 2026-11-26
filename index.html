@@ -75,16 +75,8 @@
         <p class="text-xs" style="color:#C8913A;">Food Display Unit - Predictive ordering</p>
       </div>
     </div>
-    <div class="flex gap-2 items-center flex-wrap no-print">
-      <div class="flex rounded-lg p-0.5 mr-2" style="background:rgba(255,255,255,0.12);">
-        <button id="tabBtnCalc" onclick="switchTab('calc')"
-          class="px-3.5 py-1.5 rounded-md text-xs font-semibold transition"
-          style="background:#C8913A;color:#fff;">🥐 Order Calculator</button>
-        <button id="tabBtnInsights" onclick="switchTab('insights')"
-          class="px-3.5 py-1.5 rounded-md text-xs font-semibold text-white/80 hover:text-white transition">
-          📊 Insights &amp; Waste</button>
-      </div>
-      <button id="btnExportCsv" onclick="exportCSV()"
+    <div class="flex gap-2 no-print">
+      <button onclick="exportCSV()"
         class="px-4 py-2 rounded-lg text-sm font-semibold"
         style="background:#C8913A;color:#fff;">⬇ Export CSV</button>
       <button onclick="window.print()"
@@ -95,7 +87,6 @@
 </header>
 
 <!-- ══════════════════════  INPUT PANEL  ══════════════════════ -->
-<div id="calcView">
 <div class="max-w-screen-xl mx-auto px-6 pt-6">
   <div class="bg-white rounded-2xl shadow-sm border border-cream-dark p-6">
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-5 items-end">
@@ -239,153 +230,6 @@
     </div>
   </div>
 </div>
-</div><!-- end #calcView -->
-
-<!-- ══════════════════════  INSIGHTS & WASTE VIEW  ══════════════════════ -->
-<div id="insightsView" class="hidden max-w-screen-xl mx-auto px-6 py-6">
-  <div id="insightsNoData" class="hidden bg-white rounded-2xl shadow-sm border border-cream-dark p-10 text-center">
-    <div class="text-5xl mb-3">📊</div>
-    <h2 class="font-bold text-lg" style="color:#4A2C1A;">No GRN / Accuracy Data Loaded Yet</h2>
-    <p class="text-sm text-gray-500 mt-1">Place <code>GRN report.xlsx</code> in the FDU_ORDERING folder and run <code>update_and_push.bat</code> to populate Predicted vs Ordered vs Received vs Sold metrics.</p>
-  </div>
-
-  <div id="insightsContent" class="hidden space-y-5">
-    <!-- Filter bar -->
-    <div class="bg-white rounded-2xl shadow-sm border border-cream-dark p-5 flex items-end justify-between flex-wrap gap-4">
-      <div class="flex items-end gap-4 flex-wrap">
-        <div style="min-width:180px;">
-          <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">City</label>
-          <select id="insCitySelect" class="form-input" onchange="onInsCityChange()">
-            <option value="">All Cities</option>
-          </select>
-        </div>
-        <div style="min-width:260px;">
-          <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Store</label>
-          <select id="insStoreSelect" class="form-input" onchange="renderInsights()">
-            <option value="">All Tracked Stores (Overview)</option>
-          </select>
-        </div>
-      </div>
-      <div class="text-right">
-        <p class="text-xs text-gray-400 uppercase tracking-wider font-semibold">Tracking Window</p>
-        <p id="insDateWindow" class="text-sm font-bold mt-0.5" style="color:#4A2C1A;">—</p>
-      </div>
-    </div>
-
-    <!-- Scorecard Cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      <div class="stat-card text-white" style="background:linear-gradient(135deg,#4A2C1A,#7A4F35);">
-        <p class="text-xs font-semibold uppercase tracking-wider" style="color:#E8B96A;">Forecast Accuracy</p>
-        <p id="insForecastAcc" class="text-3xl font-black mt-1">—</p>
-        <p id="insForecastSub" class="text-xs mt-2 opacity-80">Predicted vs Sold (0% hike baseline)</p>
-      </div>
-      <div class="stat-card text-white" style="background:linear-gradient(135deg,#7A4F35,#C8913A);">
-        <p class="text-xs font-semibold uppercase tracking-wider" style="color:#FDE68A;">Order Accuracy</p>
-        <p id="insOrderAcc" class="text-3xl font-black mt-1">—</p>
-        <p id="insOrderSub" class="text-xs mt-2 opacity-85">Received vs Sold</p>
-      </div>
-      <div class="stat-card" style="background:#FEF2F2;border:2px solid #FCA5A5;">
-        <p class="text-xs font-semibold uppercase tracking-wider text-red-700">Estimated Waste</p>
-        <p id="insWasteCost" class="text-3xl font-black mt-1 text-red-800">₹0</p>
-        <p id="insWasteSub" class="text-xs mt-2 text-red-600">— units wasted</p>
-      </div>
-      <div class="stat-card" style="background:#FFF7ED;border:2px solid #C8913A;">
-        <p class="text-xs font-semibold uppercase tracking-wider" style="color:#92400E;">Stockout &amp; Short Supply</p>
-        <p id="insStockoutRate" class="text-3xl font-black mt-1" style="color:#4A2C1A;">—</p>
-        <p id="insShortSupplySub" class="text-xs mt-2 text-gray-600">—</p>
-      </div>
-    </div>
-
-    <!-- Network Overview Table (shown when "All Tracked Stores" is selected) -->
-    <div id="insNetworkSection" class="bg-white rounded-2xl shadow-sm border border-cream-dark overflow-hidden">
-      <div class="px-6 py-4 border-b border-cream-dark flex items-center justify-between flex-wrap gap-2">
-        <div>
-          <h2 class="font-bold text-lg" style="color:#4A2C1A;">Store-by-Store Performance</h2>
-          <p class="text-xs text-gray-400">Click any store row to inspect its daily trend &amp; item-level waste</p>
-        </div>
-      </div>
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm border-collapse">
-          <thead>
-            <tr style="background:#4A2C1A;color:#fff;">
-              <th class="px-3 py-3 text-left font-semibold">Store</th>
-              <th class="px-3 py-3 text-center font-semibold">Days</th>
-              <th class="px-3 py-3 text-center font-semibold">Predicted</th>
-              <th class="px-3 py-3 text-center font-semibold">Ordered</th>
-              <th class="px-3 py-3 text-center font-semibold">Received</th>
-              <th class="px-3 py-3 text-center font-semibold">Sold</th>
-              <th class="px-3 py-3 text-center font-semibold">Forecast Acc.</th>
-              <th class="px-3 py-3 text-center font-semibold">Order Acc.</th>
-              <th class="px-3 py-3 text-center font-semibold">Waste %</th>
-              <th class="px-3 py-3 text-right font-semibold">Waste Cost</th>
-              <th class="px-3 py-3 text-center font-semibold">Stockout %</th>
-            </tr>
-          </thead>
-          <tbody id="insNetworkBody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Single-Store Detail Sections -->
-    <div id="insStoreDetailSection" class="hidden space-y-5">
-      <!-- Daily Trend -->
-      <div class="bg-white rounded-2xl shadow-sm border border-cream-dark overflow-hidden">
-        <div class="px-6 py-4 border-b border-cream-dark flex items-center justify-between flex-wrap gap-2">
-          <div>
-            <h2 class="font-bold text-lg" style="color:#4A2C1A;">Daily Trend (Predicted vs Ordered vs Received vs Sold)</h2>
-            <p class="text-xs text-gray-400">All quantities in units (NOS)</p>
-          </div>
-          <button onclick="document.getElementById('insStoreSelect').value='';renderInsights();"
-            class="text-xs font-semibold px-3 py-1.5 rounded-lg border border-cream-dark hover:bg-cream">
-            ← Back to All Stores
-          </button>
-        </div>
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm border-collapse">
-            <thead>
-              <tr style="background:#4A2C1A;color:#fff;">
-                <th class="px-4 py-2.5 text-left font-semibold">Date</th>
-                <th class="px-3 py-2.5 text-center font-semibold">Predicted</th>
-                <th class="px-3 py-2.5 text-center font-semibold">Ordered</th>
-                <th class="px-3 py-2.5 text-center font-semibold">Received</th>
-                <th class="px-3 py-2.5 text-center font-semibold">Sold</th>
-                <th class="px-3 py-2.5 text-center font-semibold">Gap (Rec − Sold)</th>
-                <th class="px-4 py-2.5 text-right font-semibold">Waste Cost</th>
-              </tr>
-            </thead>
-            <tbody id="insDailyBody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Item-level Breakdown -->
-      <div class="bg-white rounded-2xl shadow-sm border border-cream-dark overflow-hidden">
-        <div class="px-6 py-4 border-b border-cream-dark">
-          <h2 class="font-bold text-lg" style="color:#4A2C1A;">Item-Level Accuracy &amp; Waste</h2>
-          <p class="text-xs text-gray-400">Sorted by highest estimated waste cost</p>
-        </div>
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm border-collapse">
-            <thead>
-              <tr style="background:#4A2C1A;color:#fff;">
-                <th class="px-3 py-2.5 text-left font-semibold">Item</th>
-                <th class="px-3 py-2.5 text-center font-semibold">Unit Cost</th>
-                <th class="px-3 py-2.5 text-center font-semibold">Predicted</th>
-                <th class="px-3 py-2.5 text-center font-semibold">Ordered</th>
-                <th class="px-3 py-2.5 text-center font-semibold">Received</th>
-                <th class="px-3 py-2.5 text-center font-semibold">Sold</th>
-                <th class="px-3 py-2.5 text-center font-semibold">Waste Units</th>
-                <th class="px-3 py-2.5 text-right font-semibold">Waste Cost</th>
-                <th class="px-3 py-2.5 text-center font-semibold">Stockout Days</th>
-              </tr>
-            </thead>
-            <tbody id="insItemBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
 
 <!-- ══════════════════════  SCRIPTS  ══════════════════════ -->
 <script>
@@ -400,7 +244,6 @@
 let currentItemProjU = {};   // code → accumulated projected units across all days
 let currentTotalProjTx = 0;  // accumulated projected transactions
 let currentTotalProjNS = 0;  // accumulated projected net sales
-let activeTab = 'calc';
 
 /* ─────────────────────────────────────────────────
    INIT
@@ -408,32 +251,11 @@ let activeTab = 'calc';
 function init() {
   populateCityDropdown();
   populateStoreDropdown();
-  populateInsightsFilters();
   // Default dates = today (single day)
   const t = new Date();
   document.getElementById('dateFrom').value = isoDate(t);
   document.getElementById('dateTo').value   = isoDate(t);
   document.getElementById('emptyState').classList.remove('hidden');
-}
-
-function switchTab(tab) {
-  activeTab = tab;
-  const isCalc = tab === 'calc';
-  document.getElementById('calcView').classList.toggle('hidden', !isCalc);
-  document.getElementById('insightsView').classList.toggle('hidden', isCalc);
-
-  const btnCalc = document.getElementById('tabBtnCalc');
-  const btnIns  = document.getElementById('tabBtnInsights');
-  btnCalc.style.background = isCalc ? '#C8913A' : 'transparent';
-  btnCalc.style.color      = isCalc ? '#fff' : 'rgba(255,255,255,0.8)';
-  btnIns.style.background  = !isCalc ? '#C8913A' : 'transparent';
-  btnIns.style.color       = !isCalc ? '#fff' : 'rgba(255,255,255,0.8)';
-
-  const expBtn = document.getElementById('btnExportCsv');
-  if (expBtn) {
-    expBtn.onclick = isCalc ? exportCSV : exportInsightsCSV;
-  }
-  if (!isCalc) renderInsights();
 }
 
 function populateCityDropdown() {
@@ -676,7 +498,7 @@ function buildTable(store, prevSoh, prevOvr) {
       '</td>' +
       /* Final */
       '<td class="px-3 py-2.5 text-center final-cell" style="background:#FFF8EE;">' +
-        renderFinal(finalPacks, hasOv, projU, moq) +
+        renderFinal(finalPacks, hasOv) +
       '</td>';
 
     tbody.appendChild(tr);
@@ -702,7 +524,7 @@ function onCellChange(input) {
   tr.querySelector('.net-need-cell').innerHTML  = renderNeed(rawNeed);
   tr.querySelector('.moq-packs-cell').innerHTML =
     moqPacks > 0 ? '<span style="color:#4A2C1A;">' + moqPacks + '</span>' : '<span class="text-gray-300">—</span>';
-  tr.querySelector('.final-cell').innerHTML = renderFinal(finalPacks, hasOv, projU, info.moq || 1);
+  tr.querySelector('.final-cell').innerHTML = renderFinal(finalPacks, hasOv);
 
   updateTotals();
 }
@@ -826,253 +648,14 @@ function renderNeed(v) {
   if (v === null || v === undefined || isNaN(v) || v <= 0) return '<span class="text-gray-300">0</span>';
   return '<span class="font-semibold" style="color:#D97706;">' + Math.ceil(v) + '</span>';
 }
-function renderFinal(v, hasOverride, projU, moq) {
+function renderFinal(v, hasOverride) {
   if (v === null || v === undefined || isNaN(v)) return '<span class="final-zero">—</span>';
-  let badge = '';
-  if (projU > 0 && moq > 0) {
-    const orderUnits = v * moq;
-    if (orderUnits < projU * 0.85) {
-      badge = '<div class="text-[10px] font-bold text-red-600 mt-0.5">Low (stockout risk)</div>';
-    } else if (orderUnits > projU * 1.5 && (orderUnits - projU) > moq) {
-      badge = '<div class="text-[10px] font-bold text-amber-600 mt-0.5">High (waste risk)</div>';
-    }
-  }
   if (v === 0) {
-    return (hasOverride
-      ? '<span class="final-big" style="color:#EF4444;">0</span>'
-      : '<span class="final-zero">0</span>') + badge;
+    return hasOverride 
+      ? '<span class="final-big" style="color:#EF4444;">0</span>' 
+      : '<span class="final-zero">0</span>';
   }
-  return '<span class="final-big">' + v + '</span>' + badge;
-}
-
-/* ─────────────────────────────────────────────────
-   INSIGHTS & WASTE DASHBOARD
-───────────────────────────────────────────────── */
-function populateInsightsFilters() {
-  const acc = FDU_DATA.accuracy || {};
-  const trackedStores = Object.keys(acc);
-  const cities = FDU_DATA.storeCities || {};
-
-  const citySel = document.getElementById('insCitySelect');
-  const uniqueCities = [...new Set(trackedStores.map(s => cities[s]).filter(Boolean))].sort();
-  citySel.innerHTML = '<option value="">All Cities</option>';
-  uniqueCities.forEach(c => {
-    const opt = document.createElement('option');
-    opt.value = c; opt.textContent = c;
-    citySel.appendChild(opt);
-  });
-  populateInsightsStoreDropdown();
-}
-
-function onInsCityChange() {
-  populateInsightsStoreDropdown();
-  renderInsights();
-}
-
-function populateInsightsStoreDropdown() {
-  const acc = FDU_DATA.accuracy || {};
-  const cities = FDU_DATA.storeCities || {};
-  const selectedCity = document.getElementById('insCitySelect').value;
-  const sel = document.getElementById('insStoreSelect');
-  const cur = sel.value;
-
-  sel.innerHTML = '<option value="">All Tracked Stores (Overview)</option>';
-  Object.keys(acc)
-    .filter(code => !selectedCity || cities[code] === selectedCity)
-    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }))
-    .forEach(code => {
-      const opt = document.createElement('option');
-      opt.value = code;
-      opt.textContent = code + ' - ' + (FDU_DATA.stores[code] || code);
-      if (code === cur) opt.selected = true;
-      sel.appendChild(opt);
-    });
-}
-
-function renderInsights() {
-  const acc = FDU_DATA.accuracy || {};
-  const trackedCodes = Object.keys(acc);
-  if (trackedCodes.length === 0) {
-    show('insightsNoData'); hide('insightsContent');
-    return;
-  }
-  hide('insightsNoData'); show('insightsContent');
-
-  const selectedCity = document.getElementById('insCitySelect').value;
-  const selectedStore = document.getElementById('insStoreSelect').value;
-  const cities = FDU_DATA.storeCities || {};
-
-  const filteredCodes = trackedCodes
-    .filter(c => !selectedCity || cities[c] === selectedCity)
-    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
-
-  if (!selectedStore || !acc[selectedStore]) {
-    // Network / City Overview
-    let tPred = 0, tOrd = 0, tRec = 0, tSold = 0, tWasteU = 0, tWasteCost = 0;
-    let wForecast = 0, wOrder = 0, wStockout = 0, minD = null, maxD = null;
-
-    filteredCodes.forEach(c => {
-      const s = acc[c];
-      tPred += s.totalPredicted; tOrd += s.totalOrdered;
-      tRec += s.totalReceived; tSold += s.totalSold;
-      tWasteU += s.wasteUnits; tWasteCost += s.wasteCost;
-      wForecast += s.forecastAccuracy * s.totalSold;
-      wOrder += s.orderAccuracy * s.totalSold;
-      wStockout += s.stockoutRate;
-      if (!minD || s.dateFrom < minD) minD = s.dateFrom;
-      if (!maxD || s.dateTo > maxD) maxD = s.dateTo;
-    });
-
-    const avgFAcc = tSold > 0 ? (wForecast / tSold) : 0;
-    const avgOAcc = tSold > 0 ? (wOrder / tSold) : 0;
-    const avgStockout = filteredCodes.length ? (wStockout / filteredCodes.length) : 0;
-    const shortPct = tOrd > 0 ? ((tOrd - tRec) / tOrd * 100) : 0;
-    const wastePct = tRec > 0 ? (tWasteU / tRec * 100) : 0;
-
-    setText('insDateWindow', (minD && maxD) ? (minD + ' to ' + maxD + ' (' + filteredCodes.length + ' stores)') : '—');
-    setText('insForecastAcc', avgFAcc.toFixed(1) + '%');
-    setText('insForecastSub', 'Pred: ' + Math.round(tPred).toLocaleString('en-IN') + ' vs Sold: ' + Math.round(tSold).toLocaleString('en-IN'));
-    setText('insOrderAcc', avgOAcc.toFixed(1) + '%');
-    setText('insOrderSub', 'Rec: ' + Math.round(tRec).toLocaleString('en-IN') + ' vs Sold: ' + Math.round(tSold).toLocaleString('en-IN'));
-    setText('insWasteCost', fmtINR(tWasteCost));
-    setText('insWasteSub', Math.round(tWasteU).toLocaleString('en-IN') + ' units (' + wastePct.toFixed(1) + '% of received)');
-    setText('insStockoutRate', avgStockout.toFixed(1) + '%');
-    setText('insShortSupplySub', 'Vendor short-supply: ' + shortPct.toFixed(1) + '% (Ord ' + Math.round(tOrd).toLocaleString('en-IN') + ' vs Rec ' + Math.round(tRec).toLocaleString('en-IN') + ')');
-
-    const tbody = document.getElementById('insNetworkBody');
-    tbody.innerHTML = '';
-    filteredCodes.forEach((code, idx) => {
-      const s = acc[code];
-      const tr = document.createElement('tr');
-      tr.className = 'cursor-pointer border-b border-cream-dark/50';
-      tr.style.background = idx % 2 === 0 ? '#fff' : '#FDFAF6';
-      tr.onclick = () => {
-        document.getElementById('insStoreSelect').value = code;
-        renderInsights();
-      };
-      tr.innerHTML =
-        '<td class="px-3 py-2.5 font-semibold text-gray-800">' + code + ' - ' + esc(FDU_DATA.stores[code] || code) + '</td>' +
-        '<td class="px-3 py-2.5 text-center text-gray-500">' + s.daysTracked + '</td>' +
-        '<td class="px-3 py-2.5 text-center">' + Math.round(s.totalPredicted).toLocaleString('en-IN') + '</td>' +
-        '<td class="px-3 py-2.5 text-center">' + Math.round(s.totalOrdered).toLocaleString('en-IN') + '</td>' +
-        '<td class="px-3 py-2.5 text-center">' + Math.round(s.totalReceived).toLocaleString('en-IN') + '</td>' +
-        '<td class="px-3 py-2.5 text-center font-semibold">' + Math.round(s.totalSold).toLocaleString('en-IN') + '</td>' +
-        '<td class="px-3 py-2.5 text-center font-semibold">' + s.forecastAccuracy.toFixed(1) + '%</td>' +
-        '<td class="px-3 py-2.5 text-center font-semibold">' + s.orderAccuracy.toFixed(1) + '%</td>' +
-        '<td class="px-3 py-2.5 text-center text-amber-700 font-semibold">' + s.wastePct.toFixed(1) + '%</td>' +
-        '<td class="px-3 py-2.5 text-right font-bold text-red-700">' + fmtINR(s.wasteCost) + '</td>' +
-        '<td class="px-3 py-2.5 text-center text-gray-600">' + s.stockoutRate.toFixed(1) + '%</td>';
-      tbody.appendChild(tr);
-    });
-
-    show('insNetworkSection'); hide('insStoreDetailSection');
-  } else {
-    // Single Store Detail
-    const s = acc[selectedStore];
-    setText('insDateWindow', s.dateFrom + ' to ' + s.dateTo + ' (' + s.daysTracked + ' days)');
-    setText('insForecastAcc', s.forecastAccuracy.toFixed(1) + '%');
-    setText('insForecastSub', 'Pred: ' + Math.round(s.totalPredicted).toLocaleString('en-IN') + ' vs Sold: ' + Math.round(s.totalSold).toLocaleString('en-IN'));
-    setText('insOrderAcc', s.orderAccuracy.toFixed(1) + '%');
-    setText('insOrderSub', 'Rec: ' + Math.round(s.totalReceived).toLocaleString('en-IN') + ' vs Sold: ' + Math.round(s.totalSold).toLocaleString('en-IN'));
-    setText('insWasteCost', fmtINR(s.wasteCost));
-    setText('insWasteSub', Math.round(s.wasteUnits).toLocaleString('en-IN') + ' units (' + s.wastePct.toFixed(1) + '% of received)');
-    setText('insStockoutRate', s.stockoutRate.toFixed(1) + '%');
-    setText('insShortSupplySub', 'Vendor short-supply: ' + s.shortSupplyPct.toFixed(1) + '% · Override rate: ' + s.overrideRate.toFixed(1) + '%');
-
-    // Daily Trend table
-    const dBody = document.getElementById('insDailyBody');
-    dBody.innerHTML = '';
-    const trend = (FDU_DATA.dailyTrend || {})[selectedStore] || [];
-    trend.forEach((d, idx) => {
-      const gap = d.rec - d.sold;
-      const tr = document.createElement('tr');
-      tr.className = 'border-b border-cream-dark/50';
-      tr.style.background = idx % 2 === 0 ? '#fff' : '#FDFAF6';
-      tr.innerHTML =
-        '<td class="px-4 py-2 font-mono text-xs text-gray-700">' + d.date + '</td>' +
-        '<td class="px-3 py-2 text-center">' + d.pred.toFixed(0) + '</td>' +
-        '<td class="px-3 py-2 text-center">' + d.ord.toFixed(0) + '</td>' +
-        '<td class="px-3 py-2 text-center">' + d.rec.toFixed(0) + '</td>' +
-        '<td class="px-3 py-2 text-center font-semibold">' + d.sold.toFixed(0) + '</td>' +
-        '<td class="px-3 py-2 text-center font-semibold ' + (gap > 0 ? 'text-amber-700' : (gap < 0 ? 'text-red-600' : 'text-gray-400')) + '">' +
-          (gap > 0 ? '+' + gap.toFixed(0) : gap.toFixed(0)) +
-        '</td>' +
-        '<td class="px-4 py-2 text-right font-semibold text-red-700">' + fmtINR(d.wasteCost) + '</td>';
-      dBody.appendChild(tr);
-    });
-
-    // Item-level table (sorted by wasteCost desc)
-    const iBody = document.getElementById('insItemBody');
-    iBody.innerHTML = '';
-    const itemMap = (FDU_DATA.itemAccuracy || {})[selectedStore] || {};
-    Object.entries(itemMap)
-      .sort((a, b) => (b[1].wasteCost - a[1].wasteCost) || (b[1].sold - a[1].sold))
-      .forEach(([code, it], idx) => {
-        const info = FDU_DATA.items[code] || {};
-        const name = (info.name && info.name !== 'null') ? info.name : code;
-        const tr = document.createElement('tr');
-        tr.className = 'border-b border-cream-dark/50';
-        tr.style.background = idx % 2 === 0 ? '#fff' : '#FDFAF6';
-        tr.innerHTML =
-          '<td class="px-3 py-2">' +
-            '<div class="font-semibold text-gray-800">' + esc(name) + '</div>' +
-            '<div class="text-xs text-gray-400 font-mono">' + code + '</div>' +
-          '</td>' +
-          '<td class="px-3 py-2 text-center text-xs text-gray-500">' + (it.unitCost > 0 ? fmtINR(it.unitCost) : '—') + '</td>' +
-          '<td class="px-3 py-2 text-center">' + it.pred.toFixed(1) + '</td>' +
-          '<td class="px-3 py-2 text-center">' + it.ord.toFixed(0) + '</td>' +
-          '<td class="px-3 py-2 text-center">' + it.rec.toFixed(0) + '</td>' +
-          '<td class="px-3 py-2 text-center font-semibold">' + it.sold.toFixed(0) + '</td>' +
-          '<td class="px-3 py-2 text-center font-semibold text-amber-700">' + it.wasteU.toFixed(0) + '</td>' +
-          '<td class="px-3 py-2 text-right font-bold text-red-700">' + fmtINR(it.wasteCost) + '</td>' +
-          '<td class="px-3 py-2 text-center">' + (it.stockouts > 0 ? '<span class="px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">' + it.stockouts + '</span>' : '<span class="text-gray-300">0</span>') + '</td>';
-        iBody.appendChild(tr);
-      });
-
-    hide('insNetworkSection'); show('insStoreDetailSection');
-  }
-}
-
-function exportInsightsCSV() {
-  const acc = FDU_DATA.accuracy || {};
-  const selectedStore = document.getElementById('insStoreSelect').value;
-  let csv = '';
-  let fname = '';
-
-  if (!selectedStore || !acc[selectedStore]) {
-    csv = 'Store Code,Store Name,Days,From,To,Predicted,Ordered,Received,Sold,Forecast Acc %,Order Acc %,Waste Units,Waste %,Waste Cost (INR),Short Supply %,Stockout Rate %\n';
-    Object.keys(acc).sort().forEach(code => {
-      const s = acc[code];
-      csv += [
-        code, '"' + (FDU_DATA.stores[code] || code).replace(/"/g,'""') + '"',
-        s.daysTracked, s.dateFrom, s.dateTo,
-        s.totalPredicted, s.totalOrdered, s.totalReceived, s.totalSold,
-        s.forecastAccuracy, s.orderAccuracy, s.wasteUnits, s.wastePct, s.wasteCost,
-        s.shortSupplyPct, s.stockoutRate
-      ].join(',') + '\n';
-    });
-    fname = 'FDU_Insights_All_Stores.csv';
-  } else {
-    const storeName = FDU_DATA.stores[selectedStore] || selectedStore;
-    csv = 'Item Code,Item Name,Unit Cost,Days,Predicted,Ordered,Received,Sold,Waste Units,Waste Cost (INR),Stockout Days\n';
-    const itemMap = (FDU_DATA.itemAccuracy || {})[selectedStore] || {};
-    Object.entries(itemMap).sort((a, b) => b[1].wasteCost - a[1].wasteCost).forEach(([code, it]) => {
-      const name = (FDU_DATA.items[code] || {}).name || code;
-      csv += [
-        code, '"' + name.replace(/"/g,'""') + '"', it.unitCost, it.days,
-        it.pred, it.ord, it.rec, it.sold, it.wasteU, it.wasteCost, it.stockouts
-      ].join(',') + '\n';
-    });
-    fname = 'FDU_Insights_' + storeName.replace(/\s+/g,'_') + '.csv';
-  }
-
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url; a.download = fname;
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  return '<span class="final-big">' + v + '</span>';
 }
 function collectVals(sel) {
   const m = {};
