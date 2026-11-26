@@ -100,7 +100,7 @@
 
       <div>
         <label class="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1.5">Store</label>
-        <select id="storeSelect" class="form-input" onchange="onInputChange()">
+        <select id="storeSelect" class="form-input" onchange="onStoreChange()">
           <option value="">— Select Store —</option>
         </select>
       </div>
@@ -191,7 +191,9 @@
       <div class="flex items-center gap-3 no-print text-xs text-gray-400 flex-wrap">
         <span>All quantities in <strong>packs</strong> (1 pack = MOQ units)</span>
         <span>·</span>
-        <span>Override = manager's quantity (packs), replaces calculated</span>
+        <span>Items &lt; 50% MOQ need default to 0 packs</span>
+        <span>·</span>
+        <button onclick="clearAllSoh()" class="text-amber-600 underline hover:text-amber-800">Clear SOH</button>
         <span>·</span>
         <button onclick="clearAllOverrides()" class="text-red-400 underline hover:text-red-600">Clear overrides</button>
       </div>
@@ -295,13 +297,36 @@ function populateStoreDropdown(resetSelection) {
     });
 }
 
-/* When From date changes, auto-set To = From (user can extend To if needed) */
+function isAltDayStore(storeCode) {
+  const city = (FDU_DATA.storeCities || {})[storeCode] || '';
+  return city.toLowerCase() === 'kolkata';
+}
+
+function addDaysIso(isoStr, days) {
+  const [y, m, d] = isoStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + days);
+  return isoDate(dt);
+}
+
+function onStoreChange() {
+  const store = document.getElementById('storeSelect').value;
+  const fromVal = document.getElementById('dateFrom').value;
+  if (store && fromVal && isAltDayStore(store)) {
+    document.getElementById('dateTo').value = addDaysIso(fromVal, 1);
+  }
+  onInputChange(true);
+}
+
+/* When From date changes, auto-set To = From (+1 day for alternate-day stores) */
 function onDateFromChange() {
   const fromVal = document.getElementById('dateFrom').value;
+  const store   = document.getElementById('storeSelect').value;
   const toEl    = document.getElementById('dateTo');
   if (fromVal) {
-    // If To is empty or before From, snap To = From
-    if (!toEl.value || toEl.value < fromVal) {
+    if (store && isAltDayStore(store)) {
+      toEl.value = addDaysIso(fromVal, 1);
+    } else if (!toEl.value || toEl.value < fromVal) {
       toEl.value = fromVal;
     }
   }
@@ -327,7 +352,28 @@ function dateRange(fromStr, toStr) {
 /* ─────────────────────────────────────────────────
    INPUT CHANGE — multi-day accumulation
 ───────────────────────────────────────────────── */
-function onInputChange() {
+let lastLoadedStore = '';
+
+function loadSavedSoh(store) {
+  try {
+    const raw = localStorage.getItem('fdu_soh_' + store);
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) { return {}; }
+}
+
+function saveSohToStorage(store) {
+  if (!store) return;
+  try {
+    const map = {};
+    document.querySelectorAll('.soh-input').forEach(el => {
+      const v = parseFloat(el.value);
+      if (el.dataset.code && !isNaN(v) && v > 0) map[el.dataset.code] = el.value;
+    });
+    localStorage.setItem('fdu_soh_' + store, JSON.stringify(map));
+  } catch (e) {}
+}
+
+function onInputChange(storeChanged) {
   const store   = document.getElementById('storeSelect').value;
   const fromStr = document.getElementById('dateFrom').value;
   const toStr   = document.getElementById('dateTo').value;
@@ -426,9 +472,10 @@ function onInputChange() {
 
   show('summarySection');
 
-  // Preserve SOH + overrides across recalcs
-  const prevSoh = collectVals('.soh-input');
-  const prevOvr = collectVals('.override-input');
+  // Preserve SOH + overrides across recalcs (restore saved SOH when switching stores)
+  const prevSoh = (store !== lastLoadedStore || storeChanged) ? loadSavedSoh(store) : collectVals('.soh-input');
+  const prevOvr = (store !== lastLoadedStore || storeChanged) ? {} : collectVals('.override-input');
+  lastLoadedStore = store;
 
   buildTable(store, prevSoh, prevOvr);
   updateTotals();
@@ -498,7 +545,7 @@ function buildTable(store, prevSoh, prevOvr) {
       '</td>' +
       /* Final */
       '<td class="px-3 py-2.5 text-center final-cell" style="background:#FFF8EE;">' +
-        renderFinal(finalPacks, hasOv) +
+        renderFinal(finalPacks, hasOv, moqPacks) +
       '</td>';
 
     tbody.appendChild(tr);
@@ -524,20 +571,23 @@ function onCellChange(input) {
   tr.querySelector('.net-need-cell').innerHTML  = renderNeed(rawNeed);
   tr.querySelector('.moq-packs-cell').innerHTML =
     moqPacks > 0 ? '<span style="color:#4A2C1A;">' + moqPacks + '</span>' : '<span class="text-gray-300">—</span>';
-  tr.querySelector('.final-cell').innerHTML = renderFinal(finalPacks, hasOv);
+  tr.querySelector('.final-cell').innerHTML = renderFinal(finalPacks, hasOv, moqPacks);
 
+  if (input.classList.contains('soh-input')) {
+    saveSohToStorage(document.getElementById('storeSelect').value);
+  }
   updateTotals();
 }
 
 /* ─────────────────────────────────────────────────
    CORE FORMULA
    rawNeed   = max(projUnits − SOH, 0)
-   moqPacks  = ⌈rawNeed ÷ MOQ⌉        ← packs to order
+   moqPacks  = ⌈rawNeed ÷ MOQ⌉ if rawNeed >= 0.5×MOQ else 0
    finalPacks = override (packs) if set, else moqPacks
 ───────────────────────────────────────────────── */
 function calcRow(projUnits, soh, moq, override) {
   const rawNeed  = Math.max(projUnits - soh, 0);
-  const moqPacks = rawNeed > 0 ? Math.ceil(rawNeed / moq) : 0;
+  const moqPacks = (rawNeed >= 0.5 * moq) ? Math.ceil(rawNeed / moq) : 0;
   const finalPacks = (override !== null && override >= 0) ? override : moqPacks;
   return { rawNeed, moqPacks, finalPacks };
 }
@@ -576,13 +626,24 @@ function updateTotals() {
 }
 
 /* ─────────────────────────────────────────────────
-   CLEAR OVERRIDES
+   CLEAR OVERRIDES / SOH
 ───────────────────────────────────────────────── */
 function clearAllOverrides() {
   document.querySelectorAll('.override-input').forEach(el => {
     el.value = '';
     onCellChange(el);
   });
+}
+
+function clearAllSoh() {
+  document.querySelectorAll('.soh-input').forEach(el => {
+    el.value = '0';
+    onCellChange(el);
+  });
+  const store = document.getElementById('storeSelect').value;
+  if (store) {
+    try { localStorage.removeItem('fdu_soh_' + store); } catch (e) {}
+  }
 }
 
 /* ─────────────────────────────────────────────────
@@ -648,14 +709,22 @@ function renderNeed(v) {
   if (v === null || v === undefined || isNaN(v) || v <= 0) return '<span class="text-gray-300">0</span>';
   return '<span class="font-semibold" style="color:#D97706;">' + Math.ceil(v) + '</span>';
 }
-function renderFinal(v, hasOverride) {
+function renderFinal(v, hasOverride, moqPacks) {
   if (v === null || v === undefined || isNaN(v)) return '<span class="final-zero">—</span>';
-  if (v === 0) {
-    return hasOverride 
-      ? '<span class="final-big" style="color:#EF4444;">0</span>' 
-      : '<span class="final-zero">0</span>';
+  let badge = '';
+  if (hasOverride && typeof moqPacks === 'number') {
+    if (v > Math.max(1, moqPacks * 1.5)) {
+      badge = '<div class="text-[10px] font-bold text-amber-600 mt-0.5">▲ High vs calc</div>';
+    } else if (moqPacks > 0 && v < moqPacks * 0.75) {
+      badge = '<div class="text-[10px] font-bold text-red-500 mt-0.5">▼ Low vs calc</div>';
+    }
   }
-  return '<span class="final-big">' + v + '</span>';
+  if (v === 0) {
+    return (hasOverride
+      ? '<span class="final-big" style="color:#EF4444;">0</span>'
+      : '<span class="final-zero">0</span>') + badge;
+  }
+  return '<span class="final-big">' + v + '</span>' + badge;
 }
 function collectVals(sel) {
   const m = {};
